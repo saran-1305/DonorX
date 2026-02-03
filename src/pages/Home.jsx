@@ -68,21 +68,7 @@ const Home = () => {
                         </p>
                     </div>
 
-                    {/* Feature 3 */}
-                    <div className="card">
-                        <div
-                            style={{ width: '48px', height: '48px', background: '#DBEAFE', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem', color: '#2563EB' }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                            </svg>
-                        </div>
-                        <h3>Transparent Audit Trail</h3>
-                        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                            Every action is logged on an immutable ledger, providing complete transparency and
-                            accountability.
-                        </p>
-                    </div>
+
                 </div>
             </section>
         </div>

@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
 const Tracking = () => {
-    const { requests, addAuditLog } = useDonor();
+    const { requests, addAuditLog, showToast } = useDonor();
     const navigate = useNavigate();
     const mapContainer = useRef(null);
     const mapInstance = useRef(null);
@@ -110,40 +110,33 @@ const Tracking = () => {
     };
 
     const completeRequest = () => {
-        if (window.confirm("Confirm delivery of resources?")) {
-            // Note: In a real app we would update the request status via context/reducer action
-            // Here we are modifying the object reference which usually is bad practice in Redux but OK if we trigger update
-            // However, context 'requests' state won't update automatically if we mutate deep object.
-            // Better to just add log and navigate. State management for status update was "mocked" in app.js by direct mutation of localStorage array.
-            // We should ideally have updateRequest in context, but for 'convert' MVP matching original:
-
-            addAuditLog('Delivery Completed', `Resources delivered successfully to ${activeRequest?.patientName}`);
-            alert("Delivery Confirmed. Protocol Solved.");
-            navigate('/dashboard');
-        }
+        // Direct action without confirm to fix interaction issues
+        addAuditLog('Delivery Completed', `Resources delivered successfully to ${activeRequest?.patientName}`);
+        showToast("Delivery Confirmed. Protocol Solved.", "success");
+        setTimeout(() => navigate('/dashboard'), 500);
     };
 
     const denyRequest = () => {
-        if (window.confirm("Are you sure you want to cancel this emergency protocol?")) {
-            addAuditLog('Request Cancelled', `User cancelled request for ${activeRequest?.patientName}`);
-            navigate('/dashboard');
-        }
+        addAuditLog('Request Cancelled', `User cancelled request for ${activeRequest?.patientName}`);
+        navigate('/dashboard');
     };
 
     return (
-        <div className="container" style={{ padding: '1rem', height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
+        <div className="container" style={{ padding: '1rem', height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             <div
                 ref={mapContainer}
                 className="map-container"
                 style={{ height: '60vh', width: '100%', borderRadius: '1rem', zIndex: 1 }}
             ></div>
 
-            <div className="overlay-card animate-fade-in" style={{
-                position: 'absolute', bottom: '2rem', left: '2rem', right: '2rem',
-                background: 'white', padding: '1.5rem', borderRadius: '1rem',
-                boxShadow: 'var(--shadow-lg)', zIndex: 1000, display: 'flex',
-                justifyContent: 'space-between', alignItems: 'center', maxWidth: '800px', margin: '0 auto'
-            }}>
+            <div className="overlay-card animate-fade-in"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    position: 'absolute', bottom: '2rem', left: '2rem', right: '2rem',
+                    background: 'white', padding: '1.5rem', borderRadius: '1rem',
+                    boxShadow: 'var(--shadow-lg)', zIndex: 9999, pointerEvents: 'auto', display: 'flex',
+                    justifyContent: 'space-between', alignItems: 'center', maxWidth: '800px', margin: '0 auto'
+                }}>
                 <div className="flex items-center gap-md">
                     <div style={{ background: '#ECFDF5', padding: '1rem', borderRadius: '50%', color: '#059669' }}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"

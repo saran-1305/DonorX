@@ -19,9 +19,7 @@ const Header = () => {
                     <NavLink to="/dashboard" className={({ isActive }) => isActive ? "active" : ""}>
                         Request Dashboard
                     </NavLink>
-                    <NavLink to="/audit" className={({ isActive }) => isActive ? "active" : ""}>
-                        Audit Trail
-                    </NavLink>
+
                     <Link to="/request" className="btn btn-primary" style={{ padding: '0.5rem 1rem', color: 'white' }}>
                         New Request
                     </Link>

@@ -29,6 +29,20 @@ const Dashboard = () => {
         return () => clearTimeout(timer);
     }, []);
 
+    // Auto-scroll for Audit Modal
+    const timelineRef = React.useRef(null);
+
+    useEffect(() => {
+        if (isAuditOpen && timelineRef.current) {
+            setTimeout(() => {
+                timelineRef.current.scrollTo({
+                    top: timelineRef.current.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
+    }, [isAuditOpen, auditLogs]);
+
     const startDenyTimer = () => {
         let timeLeft = 179;
         const interval = setInterval(() => {
@@ -125,6 +139,39 @@ const Dashboard = () => {
                 </div>
             </div>
 
+            {/* Incoming Requests */}
+            <h3 style={{ margin: '0 0 1rem' }}>Incoming Requests (Other Hospitals)</h3>
+            <div className="card table-container animate-fade-in" style={{ padding: 0, marginBottom: '3rem' }}>
+                <table className="interactive-table">
+                    <thead>
+                        <tr>
+                            <th>Request ID</th>
+                            <th>Patient</th>
+                            <th>Resource</th>
+                            <th>Origin Hospital</th>
+                            <th>Urgency</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {incomingRequests.map(req => (
+                            <tr key={req.id} onClick={() => handleOpenAudit(req.id)} style={{ cursor: 'pointer' }}>
+                                <td style={{ fontFamily: 'monospace', fontWeight: 500 }}>{req.id}</td>
+                                <td style={{ fontWeight: 600 }}>{req.patientName}</td>
+                                <td>
+                                    <div style={{ fontWeight: 500 }}>{req.organType !== 'None' ? 'Organ: ' + req.organType : 'Blood: ' + req.bloodGroup}</div>
+                                </td>
+                                <td>{req.location}</td>
+                                <td><span className={`badge ${getUrgencyClass(req.urgency)}`}>{req.urgency}</span></td>
+                                <td><span className={`badge ${getStatusClass(req.status)}`}>{req.status}</span></td>
+                                <td style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{formatDate(req.timestamp)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
             {/* Outgoing Requests */}
             <div className="card table-container animate-fade-in" style={{ padding: 0 }}>
                 <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)' }}>
@@ -166,39 +213,6 @@ const Dashboard = () => {
                 </table>
             </div>
 
-            {/* Incoming Requests */}
-            <h3 style={{ margin: '3rem 0 1rem' }}>Incoming Requests (Other Hospitals)</h3>
-            <div className="card table-container animate-fade-in" style={{ padding: 0 }}>
-                <table className="interactive-table">
-                    <thead>
-                        <tr>
-                            <th>Request ID</th>
-                            <th>Patient</th>
-                            <th>Resource</th>
-                            <th>Origin Hospital</th>
-                            <th>Urgency</th>
-                            <th>Status</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {incomingRequests.map(req => (
-                            <tr key={req.id} onClick={() => handleOpenAudit(req.id)} style={{ cursor: 'pointer' }}>
-                                <td style={{ fontFamily: 'monospace', fontWeight: 500 }}>{req.id}</td>
-                                <td style={{ fontWeight: 600 }}>{req.patientName}</td>
-                                <td>
-                                    <div style={{ fontWeight: 500 }}>{req.organType !== 'None' ? 'Organ: ' + req.organType : 'Blood: ' + req.bloodGroup}</div>
-                                </td>
-                                <td>{req.location}</td>
-                                <td><span className={`badge ${getUrgencyClass(req.urgency)}`}>{req.urgency}</span></td>
-                                <td><span className={`badge ${getStatusClass(req.status)}`}>{req.status}</span></td>
-                                <td style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{formatDate(req.timestamp)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-
             {/* Audit Modal */}
             <Modal isOpen={isAuditOpen} onClose={() => setAuditOpen(false)} maxWidth="800px">
                 <div className="flex justify-between items-center"
@@ -210,7 +224,7 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                <div className="timeline" style={{ textAlign: 'left' }}>
+                <div className="timeline" ref={timelineRef} style={{ textAlign: 'left', maxHeight: '60vh', overflowY: 'auto' }}>
                     {auditLogs.map((log, index) => (
                         <div key={index} className="timeline-item">
                             <div className="timeline-dot"></div>
