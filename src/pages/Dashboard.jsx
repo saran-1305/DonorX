@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDonor } from '../context/DonorContext';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
@@ -30,7 +30,12 @@ const Dashboard = () => {
     }, []);
 
     // Auto-scroll for Audit Modal
-    const timelineRef = React.useRef(null);
+    const timelineRef = useRef(null);
+    const outgoingRef = useRef(null);
+
+    const scrollToOutgoing = () => {
+        outgoingRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     useEffect(() => {
         if (isAuditOpen && timelineRef.current) {
@@ -140,7 +145,23 @@ const Dashboard = () => {
             </div>
 
             {/* Incoming Requests */}
-            <h3 style={{ margin: '0 0 1rem' }}>Incoming Requests (Other Hospitals)</h3>
+            <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0 }}>Incoming Requests (Other Hospitals)</h3>
+                <button
+                    onClick={scrollToOutgoing}
+                    className="btn"
+                    style={{
+                        fontSize: '0.8rem',
+                        padding: '0.4rem 0.8rem',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                    }}
+                >
+                    Outgoing ↓
+                </button>
+            </div>
             <div className="card table-container animate-fade-in" style={{ padding: 0, marginBottom: '3rem' }}>
                 <table className="interactive-table">
                     <thead>
@@ -173,7 +194,7 @@ const Dashboard = () => {
             </div>
 
             {/* Outgoing Requests */}
-            <div className="card table-container animate-fade-in" style={{ padding: 0 }}>
+            <div ref={outgoingRef} className="card table-container animate-fade-in" style={{ padding: 0 }}>
                 <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)' }}>
                     <h3 style={{ margin: 0 }}>Outgoing Requests</h3>
                 </div>
