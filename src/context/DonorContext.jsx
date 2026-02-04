@@ -47,6 +47,7 @@ const MOCK_DATA = {
 };
 
 export const DonorProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
     const [requests, setRequests] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
     const [incomingRequests, setIncomingRequests] = useState([]);
@@ -56,16 +57,33 @@ export const DonorProvider = ({ children }) => {
         // Initialize Data
         const storedRequests = localStorage.getItem(STORAGE_KEYS.REQUESTS);
         const storedLogs = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
+        const storedUser = localStorage.getItem('donorx_user');
 
-        if (!storedRequests) {
-            console.log('Seeding initial data...');
-            localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(MOCK_DATA.requests));
-            localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(MOCK_DATA.logs));
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Failed to parse user", e);
+                localStorage.removeItem('donorx_user');
+            }
+        }
+
+        try {
+            if (!storedRequests) {
+                console.log('Seeding initial data...');
+                localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(MOCK_DATA.requests));
+                localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(MOCK_DATA.logs));
+                setRequests(MOCK_DATA.requests);
+                setAuditLogs(MOCK_DATA.logs);
+            } else {
+                setRequests(JSON.parse(storedRequests));
+                setAuditLogs(JSON.parse(storedLogs));
+            }
+        } catch (e) {
+            console.error("Failed to parse data", e);
+            // Verify if we should fallback to mock data or just clear
             setRequests(MOCK_DATA.requests);
             setAuditLogs(MOCK_DATA.logs);
-        } else {
-            setRequests(JSON.parse(storedRequests));
-            setAuditLogs(JSON.parse(storedLogs));
         }
 
         // Initialize Incoming Requests (Mock)
@@ -94,6 +112,77 @@ export const DonorProvider = ({ children }) => {
 
         startSimulation();
     }, []);
+
+    const getRegisteredUsers = () => {
+        try {
+            return JSON.parse(localStorage.getItem('donorx_registered_users') || '[]');
+        } catch (e) {
+            console.error("Error parsing registered users", e);
+            localStorage.removeItem('donorx_registered_users');
+            return [];
+        }
+    };
+
+    const login = (username, password) => {
+        // Mock Login Logic
+        // In a real app, this would verify against a database
+        // For prototype, we check localStorage 'registered_users' or allow a default admin
+        const registeredUsers = getRegisteredUsers();
+        const foundUser = registeredUsers.find(u => u.username === username && u.password === password);
+
+        if (foundUser) {
+            setUser(foundUser);
+            localStorage.setItem('donorx_user', JSON.stringify(foundUser));
+            return { success: true };
+        }
+
+        // Default Demo User
+        if (username === 'admin' && password === 'admin') {
+            const demoUser = { name: 'Admin User', username: 'admin', hospitalName: 'Apollo Main', phone: '9876543210' };
+            setUser(demoUser);
+            localStorage.setItem('donorx_user', JSON.stringify(demoUser));
+            return { success: true };
+        }
+
+        return { success: false, message: 'Invalid credentials' };
+    };
+
+    const register = (userDetails) => {
+        const registeredUsers = getRegisteredUsers();
+
+        if (registeredUsers.find(u => u.username === userDetails.username)) {
+            return { success: false, message: 'Username already taken' };
+        }
+
+        const newUser = { ...userDetails };
+        registeredUsers.push(newUser);
+        localStorage.setItem('donorx_registered_users', JSON.stringify(registeredUsers));
+
+        return { success: true };
+    };
+
+    const logout = () => {
+        setUser(null);
+        localStorage.removeItem('donorx_user');
+    };
+
+    const updateProfile = (updatedDetails) => {
+        const updatedUser = { ...user, ...updatedDetails };
+
+        // Update in current state
+        setUser(updatedUser);
+        localStorage.setItem('donorx_user', JSON.stringify(updatedUser));
+
+        // Update in registered users list
+        const registeredUsers = getRegisteredUsers();
+        const userIndex = registeredUsers.findIndex(u => u.username === user.username);
+        if (userIndex !== -1) {
+            registeredUsers[userIndex] = { ...registeredUsers[userIndex], ...updatedDetails };
+            localStorage.setItem('donorx_registered_users', JSON.stringify(registeredUsers));
+        }
+
+        showToast('Profile updated successfully!', 'success');
+    };
 
     const addRequest = (request) => {
         const newRequest = {
@@ -202,10 +291,15 @@ export const DonorProvider = ({ children }) => {
 
     return (
         <DonorContext.Provider value={{
+            user,
             requests,
             auditLogs,
             incomingRequests,
             toasts,
+            login,
+            register,
+            logout,
+            updateProfile,
             addRequest,
             addAuditLog,
             getAuditLogsForRequest,
