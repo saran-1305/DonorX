@@ -207,6 +207,7 @@ export const DonorProvider = ({ children }) => {
             incomingRequests,
             toasts,
             addRequest,
+            addAuditLog,
             getAuditLogsForRequest,
             showToast,
             removeToast,
