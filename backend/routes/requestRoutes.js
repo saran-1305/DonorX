@@ -8,12 +8,11 @@ const {
     updateRequestStatus
 } = require('../controllers/requestController');
 const { protect } = require('../middleware/authMiddleware');
-const asyncHandler = require('../middleware/asyncHandler');
 
-router.post('/', protect, asyncHandler(createRequest));
-router.get('/my', protect, asyncHandler(getMyRequests));
-router.get('/incoming', protect, asyncHandler(getIncomingRequests));
-router.post('/:id/respond', protect, asyncHandler(respondToRequest));
-router.put('/:id/status', protect, asyncHandler(updateRequestStatus));
+router.post('/', protect, createRequest);
+router.get('/my', protect, getMyRequests);
+router.get('/incoming', protect, getIncomingRequests);
+router.post('/:id/respond', protect, respondToRequest);
+router.put('/:id/status', protect, updateRequestStatus);
 
 module.exports = router;

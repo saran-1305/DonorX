@@ -4,27 +4,19 @@ const { findMatchingHospitals } = require('./matchingService');
 const { createAuditLog } = require('./auditService');
 
 exports.processRequestMatching = async (requestId) => {
-    try {
-        const request = await EmergencyRequest.findById(requestId);
-        if (!request || request.status !== 'Generated') {
-            console.log(`Skipping matching for request ${requestId}: status is ${request?.status || 'not found'}`);
-            return;
-        }
+    const request = await EmergencyRequest.findById(requestId);
+    if (!request || request.status !== 'Generated') return;
 
-        // Find matches
-        const matches = await findMatchingHospitals(request);
+    // Find matches
+    const matches = await findMatchingHospitals(request);
 
-        // Update request
-        if (matches.length > 0) {
-            request.potentialMatches = matches;
-            await request.save();
-            await createAuditLog(requestId, 'MATCHES_FOUND', { count: matches.length, hospitals: matches });
-        } else {
-            await createAuditLog(requestId, 'NO_MATCHES_FOUND', { radius: request.searchRadius || 5 });
-        }
-    } catch (error) {
-        console.error(`Error in processRequestMatching for request ${requestId}:`, error);
-        // Don't throw - this is async and shouldn't block request creation
+    // Update request
+    if (matches.length > 0) {
+        request.potentialMatches = matches;
+        await request.save();
+        await createAuditLog(requestId, 'MATCHES_FOUND', { count: matches.length, hospitals: matches });
+    } else {
+        await createAuditLog(requestId, 'NO_MATCHES_FOUND', { radius: request.searchRadius });
     }
 };
 
@@ -38,7 +30,7 @@ exports.expandSearchRadius = async (requestId) => {
     await createAuditLog(requestId, 'RADIUS_EXPANDED', { newRadius: request.searchRadius });
 
     // Re-run matching
-    await exports.processRequestMatching(requestId);
+    await this.processRequestMatching(requestId);
 };
 
 exports.handleAcceptance = async (requestId, hospitalId) => {

@@ -15,18 +15,16 @@ const protect = async (req, res, next) => {
 
             req.user = await Hospital.findById(decoded.id).select('-password');
 
-            if (!req.user) {
-                return res.status(401).json({ message: 'Not authorized, user not found' });
-            }
-
-            return next();
+            next();
         } catch (error) {
-            console.error('Auth error:', error);
-            return res.status(401).json({ message: 'Not authorized, token failed' });
+            console.error(error);
+            res.status(401).json({ message: 'Not authorized, token failed' });
         }
     }
 
-    return res.status(401).json({ message: 'Not authorized, no token' });
+    if (!token) {
+        res.status(401).json({ message: 'Not authorized, no token' });
+    }
 };
 
 module.exports = { protect };

@@ -98,39 +98,17 @@ const NewRequest = () => {
         // Prepare Payload
         const resourceNeeded = {};
         if (selectedResources.blood) {
-            if (!formData.bloodGroup) {
-                showToast('Please select a blood group.', 'warning');
-                return;
-            }
             resourceNeeded.type = 'BLOOD';
             resourceNeeded.group = formData.bloodGroup;
-            resourceNeeded.quantity = Number(formData.bloodQty) || 1;
-        } else if (selectedResources.organ) {
-            if (!formData.organType) {
-                showToast('Please select an organ type.', 'warning');
-                return;
-            }
+            resourceNeeded.quantity = Number(formData.bloodQty);
+        } else {
             resourceNeeded.type = 'ORGAN';
             resourceNeeded.group = formData.organType;
-            resourceNeeded.quantity = Number(formData.organQty) || 1;
-        } else {
-            showToast('Please select at least one resource (Blood or Organ).', 'warning');
-            return;
-        }
-
-        // Validate all required fields
-        if (!formData.patientName || formData.patientName.trim() === '') {
-            showToast('Please enter a patient name.', 'warning');
-            return;
-        }
-
-        if (!formData.urgency) {
-            showToast('Please select an urgency level.', 'warning');
-            return;
+            resourceNeeded.quantity = Number(formData.organQty);
         }
 
         const payload = {
-            patientName: formData.patientName.trim(),
+            patientName: formData.patientName,
             urgency: formData.urgency,
             condition: formData.conditionType,
             resourceNeeded,
@@ -140,29 +118,13 @@ const NewRequest = () => {
             }
         };
 
-        console.log('Sending request payload:', payload);
-
         try {
-            const response = await requestService.create(payload);
-            console.log('Request created successfully:', response.data);
-            
-            // Only start simulation if request was successful
-            if (response && response.status === 201) {
-                showToast('Emergency request created successfully!', 'success');
-                // Start Visual Simulation
-                startSimulation();
-            }
+            await requestService.create(payload);
+            // Start Visual Simulation
+            startSimulation();
         } catch (error) {
-            console.error('Request creation error:', error);
-            console.error('Error response:', error.response?.data);
-            console.error('Error status:', error.response?.status);
-            
-            const errorMessage = error.response?.data?.message || 
-                                error.response?.data?.error || 
-                                error.message || 
-                                'Unknown error occurred';
-            
-            showToast(`Failed to create request: ${errorMessage}`, 'error');
+            console.error(error);
+            showToast('Failed to create request: ' + (error.response?.data?.message || 'Unknown error'), 'error');
         }
     };
 
