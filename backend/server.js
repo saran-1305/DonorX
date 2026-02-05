@@ -50,6 +50,12 @@ app.use('/api/inventory', inventoryRoutes);
 const requestRoutes = require('./routes/requestRoutes');
 app.use('/api/requests', requestRoutes);
 
+const reportRoutes = require('./routes/reportRoutes');
+app.use('/api/reports', reportRoutes);
+
+const voiceRoutes = require('./routes/voiceRoutes');
+app.use('/api/voice', voiceRoutes);
+
 // Start Server
 const PORT = process.env.PORT || 5000;
 

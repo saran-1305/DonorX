@@ -36,6 +36,20 @@ export const inventoryService = {
     updateInventory: (data) => api.put('/inventory', data),
 };
 
+export const assistService = {
+    parseReport: (file) => {
+        const formData = new FormData();
+        formData.append('report', file);
+        return api.post('/reports/parse', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+    },
+    parseVoice: (transcript) =>
+        api.post('/voice/parse', { transcript }),
+};
+
 export const requestService = {
     create: (data) => api.post('/requests', data),
     getMyRequests: () => api.get('/requests/my'),

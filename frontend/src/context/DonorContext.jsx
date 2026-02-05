@@ -3,6 +3,32 @@ import { authService } from '../services/api';
 
 const DonorContext = createContext();
 
+// Shape the backend hospital auth response into the UI-friendly "user" object
+const normalizeUserFromApi = (apiUser) => {
+    if (!apiUser) return null;
+
+    const hospitalName = apiUser.name || '';
+    const email = apiUser.email || '';
+
+    return {
+        // Core identifiers
+        id: apiUser._id,
+        hospitalId: apiUser.hospitalId,
+
+        // Profile / display fields expected by the UI
+        name: hospitalName || email,          // used for avatar initial + title
+        hospitalName,                         // "Hospital Name" field on profile page
+        username: email || apiUser.hospitalId, // shown as "Username (ID)"
+        email,
+        role: 'Hospital Staff',
+        phone: apiUser.phone || '',
+
+        // Backend-specific data we may need elsewhere
+        location: apiUser.location,
+        token: apiUser.token,
+    };
+};
+
 export const DonorProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [auditLogs, setAuditLogs] = useState([]);
@@ -37,9 +63,11 @@ export const DonorProvider = ({ children }) => {
     const login = async (email, password) => {
         try {
             const { data } = await authService.login(email, password);
-            // Data should contain user info + token
-            setUser(data);
-            localStorage.setItem('donorx_user', JSON.stringify(data));
+            const normalizedUser = normalizeUserFromApi(data);
+
+            setUser(normalizedUser);
+            localStorage.setItem('donorx_user', JSON.stringify(normalizedUser));
+
             return { success: true };
         } catch (error) {
             console.error("Login failed", error);
@@ -53,8 +81,12 @@ export const DonorProvider = ({ children }) => {
     const register = async (userData) => {
         try {
             const { data } = await authService.register(userData);
-            setUser(data);
-            localStorage.setItem('donorx_user', JSON.stringify(data));
+
+            // We don't keep the user "logged in" after registration –
+            // Login flow will re-normalize and persist the user.
+            const normalizedUser = normalizeUserFromApi(data);
+            localStorage.setItem('donorx_last_registered_hospital', JSON.stringify(normalizedUser));
+
             return { success: true };
         } catch (error) {
             return {
