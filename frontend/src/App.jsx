@@ -2,16 +2,20 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './layouts/Layout';
 import Home from './pages/Home';
-import Dashboard from './pages/Dashboard';
-import HospitalDashboard from './pages/HospitalDashboard';
-import NewRequest from './pages/NewRequest';
-import Tracking from './pages/Tracking';
-import Audit from './pages/Audit';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Profile from './pages/Profile';
+
+// OS Pages & Modules
 import CommandCenter from './pages/CommandCenter';
-import HospitalDirectory from './pages/HospitalDirectory';
+import EmergencyCoordination from './pages/modules/EmergencyCoordination';
+import BloodExchange from './pages/modules/BloodExchange';
+import OrganExchange from './pages/modules/OrganExchange';
+import AmbulanceIntelligence from './pages/modules/AmbulanceIntelligence';
+import HospitalCollaboration from './pages/modules/HospitalCollaboration';
+import PatientIntelligence from './pages/modules/PatientIntelligence';
+import MozillaAIEngine from './pages/modules/MozillaAIEngine';
+import NationalHealthGrid from './pages/modules/NationalHealthGrid';
+
 import { DonorProvider, useDonor } from './context/DonorContext';
 
 const ProtectedRoute = ({ children }) => {
@@ -30,50 +34,64 @@ function App() {
         <DonorProvider>
             <Router>
                 <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
+                    
                     <Route path="/" element={<Layout />}>
                         <Route index element={<Home />} />
-                        <Route path="login" element={<Login />} />
-                        <Route path="register" element={<Register />} />
-
-                        {/* Protected Routes */}
+                        
+                        {/* OS Protected Routes */}
                         <Route path="command-center" element={
                             <ProtectedRoute>
                                 <CommandCenter />
                             </ProtectedRoute>
                         } />
-                        <Route path="dashboard" element={
+                        
+                        <Route path="modules/emergency" element={
                             <ProtectedRoute>
-                                <Dashboard />
+                                <EmergencyCoordination />
                             </ProtectedRoute>
                         } />
-                        <Route path="directory" element={
+                        
+                        <Route path="modules/blood" element={
                             <ProtectedRoute>
-                                <HospitalDirectory />
+                                <BloodExchange />
                             </ProtectedRoute>
                         } />
-                        <Route path="hospital-dashboard" element={
+                        
+                        <Route path="modules/organ" element={
                             <ProtectedRoute>
-                                <HospitalDashboard />
+                                <OrganExchange />
                             </ProtectedRoute>
                         } />
-                        <Route path="request" element={
+                        
+                        <Route path="modules/ambulance" element={
                             <ProtectedRoute>
-                                <NewRequest />
+                                <AmbulanceIntelligence />
                             </ProtectedRoute>
                         } />
-                        <Route path="tracking" element={
+                        
+                        <Route path="modules/hospitals" element={
                             <ProtectedRoute>
-                                <Tracking />
+                                <HospitalCollaboration />
                             </ProtectedRoute>
                         } />
-                        <Route path="audit" element={
+                        
+                        <Route path="modules/patient" element={
                             <ProtectedRoute>
-                                <Audit />
+                                <PatientIntelligence />
                             </ProtectedRoute>
                         } />
-                        <Route path="profile" element={
+                        
+                        <Route path="modules/ai" element={
                             <ProtectedRoute>
-                                <Profile />
+                                <MozillaAIEngine />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="modules/grid" element={
+                            <ProtectedRoute>
+                                <NationalHealthGrid />
                             </ProtectedRoute>
                         } />
                     </Route>

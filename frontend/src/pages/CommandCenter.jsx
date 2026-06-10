@@ -1,292 +1,193 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { statsService, hospitalService } from '../services/api';
-import { getSocket } from '../services/socket';
+    Activity, ShieldAlert, Heart, Building2,
+    TrendingUp, Droplet, Users, Truck
+} from 'lucide-react';
 
-const URGENCY_COLORS = {
-    Critical: '#DC2626',
-    High: '#F97316',
-    Medium: '#F59E0B',
-    Low: '#10B981',
-};
+const StatCard = ({ title, value, subtext, icon: Icon, trend, colorClass }) => (
+    <div className="card">
+        <div className="flex justify-between items-center mb-md">
+            <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{title}</h3>
+            <div className={`badge ${colorClass}`}>
+                <Icon size={14} style={{ marginRight: '4px' }} />
+                Live
+            </div>
+        </div>
+        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{value}</div>
+        <div className="flex items-center gap-sm mt-md" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            <TrendingUp size={16} color={trend === 'up' ? 'var(--success)' : 'var(--danger)'} />
+            {subtext}
+        </div>
+    </div>
+);
 
-const RESOURCE_LABELS = {
-    ICU_BED: 'ICU Bed',
-    VENTILATOR: 'Ventilator',
-    OXYGEN_CYLINDER: 'Oxygen',
-    AMBULANCE: 'Ambulance',
-};
-
-const formatTimeAgo = (dateStr) => {
-    if (!dateStr) return '';
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-};
-
-const getMarkerColor = (hospital) => {
-    const resources = hospital.resources || [];
-    if (!resources.length) return '#6B7280';
-    const ratios = resources.map((r) => (r.total > 0 ? r.available / r.total : 0));
-    const avg = ratios.reduce((a, b) => a + b, 0, 0) / ratios.length;
-    if (avg > 0.5) return '#059669';
-    if (avg > 0.2) return '#D97706';
-    return '#DC2626';
+const ModuleShortcut = ({ title, description, icon: Icon, path }) => {
+    const navigate = useNavigate();
+    return (
+        <div 
+            className="card" 
+            style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '1rem' }}
+            onClick={() => navigate(path)}
+        >
+            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon size={24} color="var(--primary-color)" />
+            </div>
+            <div>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem' }}>{title}</h3>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{description}</p>
+            </div>
+        </div>
+    );
 };
 
 const CommandCenter = () => {
-    const [stats, setStats] = useState(null);
-    const [hospitals, setHospitals] = useState([]);
-    const [lastUpdated, setLastUpdated] = useState(new Date());
-    const mapRef = useRef(null);
-    const mapInstance = useRef(null);
-
-    const fetchAll = useCallback(async () => {
-        try {
-            const [statsRes, networkRes] = await Promise.all([
-                statsService.getStats(),
-                hospitalService.getNetwork(),
-            ]);
-            setStats(statsRes.data);
-            setHospitals(Array.isArray(networkRes.data) ? networkRes.data : []);
-            setLastUpdated(new Date());
-        } catch (e) {
-            console.error('Command center fetch error:', e);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchAll();
-        const interval = setInterval(fetchAll, 30000);
-        return () => clearInterval(interval);
-    }, [fetchAll]);
-
-    useEffect(() => {
-        const socket = getSocket();
-        const refresh = () => fetchAll();
-        socket.on('new_request', refresh);
-        socket.on('request_accepted', refresh);
-        return () => {
-            socket.off('new_request', refresh);
-            socket.off('request_accepted', refresh);
-        };
-    }, [fetchAll]);
-
-    useEffect(() => {
-        if (!mapRef.current || hospitals.length === 0) return;
-
-        if (mapInstance.current) {
-            mapInstance.current.remove();
-        }
-
-        const map = L.map(mapRef.current).setView([13.0827, 80.2707], 11);
-        mapInstance.current = map;
-
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO',
-        }).addTo(map);
-
-        hospitals.forEach((h) => {
-            const coords = h.location?.coordinates;
-            if (!coords || coords.length < 2) return;
-
-            const color = getMarkerColor(h);
-            const icon = L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.4)"></div>`,
-                iconSize: [14, 14],
-                iconAnchor: [7, 7],
-            });
-
-            const bloodSummary = (h.inventory || [])
-                .filter((i) => i.type === 'BLOOD' && i.quantity > 0)
-                .map((i) => `${i.group}: ${i.quantity}`)
-                .join(', ') || 'No blood stock';
-
-            const resourceSummary = (h.resources || [])
-                .map((r) => `${RESOURCE_LABELS[r.resourceType] || r.resourceType}: ${r.available}`)
-                .join('<br>');
-
-            L.marker([coords[1], coords[0]], { icon })
-                .addTo(map)
-                .bindPopup(
-                    `<b>${h.name}</b><br><small>Blood: ${bloodSummary}</small><br>${resourceSummary}<br>Active: ${h.activeEmergencies || 0}`
-                );
-        });
-
-        return () => {
-            if (mapInstance.current) {
-                mapInstance.current.remove();
-                mapInstance.current = null;
-            }
-        };
-    }, [hospitals]);
-
-    const urgencyChartData = stats?.requestsByUrgency
-        ? Object.entries(stats.requestsByUrgency).map(([name, value]) => ({ name, value }))
-        : [];
-
-    const bloodChartData = stats?.bloodInventorySummary
-        ? Object.entries(stats.bloodInventorySummary).map(([group, units]) => ({ group, units }))
-        : [];
-
-    const activeEmergencies = stats?.activeRequests || 0;
-
     return (
-        <div style={{ width: '100%', minHeight: '100vh', background: '#F3F4F6' }}>
-            <div style={{
-                background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-                color: 'white',
-                padding: '1rem 2rem',
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem',
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>DonorX</span>
-                    <span style={{ opacity: 0.7, fontSize: '0.9rem' }}>Command Center</span>
+        <div style={{ paddingBottom: '2rem' }}>
+            <div className="flex justify-between items-center mb-lg">
+                <div>
+                    <h1 style={{ marginBottom: '0.5rem' }}>Executive Command Center</h1>
+                    <p style={{ color: 'var(--text-secondary)' }}>National Healthcare Intelligence Overview.</p>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                    <span style={{
-                        background: activeEmergencies > 0 ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.1)',
-                        padding: '0.4rem 0.9rem',
-                        borderRadius: '999px',
-                        fontSize: '0.85rem',
-                        border: activeEmergencies > 0 ? '1px solid #FCA5A5' : 'none',
-                    }}>
-                        Active Emergencies: <strong>{activeEmergencies}</strong>
-                    </span>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '0.4rem 0.9rem', borderRadius: '999px', fontSize: '0.85rem' }}>
-                        Today: <strong>{stats?.totalRequestsToday ?? '—'}</strong>
-                    </span>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '0.4rem 0.9rem', borderRadius: '999px', fontSize: '0.85rem' }}>
-                        Avg Response: <strong>{stats?.averageResponseTimeMinutes ?? 0}m</strong>
-                    </span>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '0.4rem 0.9rem', borderRadius: '999px', fontSize: '0.85rem' }}>
-                        Top Blood: <strong>{stats?.topBloodType || '—'}</strong>
-                    </span>
+                <div className="flex gap-sm">
+                    <button className="btn btn-secondary">Generate Report</button>
+                    <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                        <ShieldAlert size={16} /> Declare Emergency
+                    </button>
                 </div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
-                    Updated {lastUpdated.toLocaleTimeString()}
-                </span>
             </div>
 
-            <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '1.5rem' }}>
-                <div className="card" style={{ padding: '1.25rem' }}>
-                    <h3 style={{ margin: '0 0 1rem' }}>Emergency Activity</h3>
-                    <div style={{ height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={urgencyChartData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip />
-                                <Bar dataKey="value" fill="#4F46E5" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
+            {/* KPI Cards Grid */}
+            <div className="grid-4 mb-lg">
+                <StatCard 
+                    title="Active Emergencies" 
+                    value="14" 
+                    subtext="+2 since last hour" 
+                    icon={ShieldAlert} 
+                    trend="up" 
+                    colorClass="badge-danger" 
+                />
+                <StatCard 
+                    title="Available Blood Units" 
+                    value="4,291" 
+                    subtext="Healthy reserves" 
+                    icon={Droplet} 
+                    trend="up" 
+                    colorClass="badge-success" 
+                />
+                <StatCard 
+                    title="ICU Capacity" 
+                    value="82%" 
+                    subtext="Nearing critical threshold" 
+                    icon={Activity} 
+                    trend="down" 
+                    colorClass="badge-warning" 
+                />
+                <StatCard 
+                    title="Ambulance Fleet" 
+                    value="124" 
+                    subtext="84 Active, 40 Standby" 
+                    icon={Truck} 
+                    trend="up" 
+                    colorClass="badge-info" 
+                />
+            </div>
+
+            <div className="grid-3 mb-lg">
+                <div style={{ gridColumn: 'span 2' }}>
+                    <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Active Critical Alerts</h2>
+                    <div className="data-grid-container">
+                        <table className="data-grid">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Region / Hospital</th>
+                                    <th>Alert Type</th>
+                                    <th>AI Recommendation</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span className="badge badge-danger">Critical</span></td>
+                                    <td>Metro General Hospital</td>
+                                    <td>O- Blood Shortage</td>
+                                    <td>Initiate inter-hospital transfer (City Center Med)</td>
+                                    <td><button className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>Resolve</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span className="badge badge-warning">High</span></td>
+                                    <td>Downtown Medical</td>
+                                    <td>ICU Overflow Risk</td>
+                                    <td>Divert incoming ambulances to Valley Health</td>
+                                    <td><button className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>Resolve</button></td>
+                                </tr>
+                                <tr>
+                                    <td><span className="badge badge-warning">High</span></td>
+                                    <td>Valley Health Center</td>
+                                    <td>Mass Casualty Incident</td>
+                                    <td>Dispatch 4 additional ambulances</td>
+                                    <td><button className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>Resolve</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <h4 style={{ margin: '1.5rem 0 0.75rem', fontSize: '0.95rem' }}>Recent Requests</h4>
-                    {(stats?.recentRequests || []).length === 0 ? (
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No recent requests.</p>
-                    ) : (
-                        stats.recentRequests.map((req) => (
-                            <div key={req._id} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.75rem',
-                                padding: '0.6rem 0',
-                                borderBottom: '1px solid var(--border-color)',
-                            }}>
-                                <span className="badge" style={{
-                                    background: `${URGENCY_COLORS[req.urgency]}22`,
-                                    color: URGENCY_COLORS[req.urgency],
-                                    fontSize: '0.75rem',
-                                }}>
-                                    {req.urgency}
-                                </span>
-                                <span style={{ fontWeight: 600, flex: 1 }}>{req.patientName}</span>
-                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                    {req.resourceNeeded?.resourceCategory === 'RESOURCE'
-                                        ? req.resourceNeeded.type.replace(/_/g, ' ')
-                                        : `${req.resourceNeeded?.group || ''} ${req.resourceNeeded?.type || ''}`}
-                                </span>
-                                <span className="badge badge-searching" style={{ fontSize: '0.7rem' }}>{req.status}</span>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    {formatTimeAgo(req.createdAt)}
-                                </span>
+                </div>
+                
+                <div>
+                    <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Mozilla AI Insights</h2>
+                    <div className="card glass-panel" style={{ height: 'calc(100% - 2.5rem)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-color)', marginTop: '8px' }}></div>
+                            <div>
+                                <h4 style={{ fontSize: '0.875rem' }}>Demand Spike Predicted</h4>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>O+ blood demand expected to rise 40% in North Region due to upcoming holiday weekend.</p>
                             </div>
-                        ))
-                    )}
-                </div>
-
-                <div className="card" style={{ padding: '1.25rem' }}>
-                    <h3 style={{ margin: '0 0 1rem' }}>Resource Overview</h3>
-                    <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                        {Object.entries(stats?.resourceSummary || {}).map(([type, count]) => {
-                            const totalEstimate = count + 10;
-                            const pct = Math.min(100, Math.round((count / totalEstimate) * 100));
-                            return (
-                                <div key={type} style={{
-                                    padding: '0.75rem',
-                                    background: '#F9FAFB',
-                                    borderRadius: '8px',
-                                    border: '1px solid var(--border-color)',
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                                            {RESOURCE_LABELS[type] || type}
-                                        </span>
-                                        <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#4F46E5' }}>
-                                            {count}
-                                        </span>
-                                    </div>
-                                    <div style={{ height: 6, background: '#E5E7EB', borderRadius: 3 }}>
-                                        <div style={{
-                                            width: `${pct}%`,
-                                            height: '100%',
-                                            background: pct > 50 ? '#059669' : pct > 20 ? '#D97706' : '#DC2626',
-                                            borderRadius: 3,
-                                        }} />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Blood Inventory (Network)</h4>
-                    <div style={{ height: 180 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={bloodChartData} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis type="number" />
-                                <YAxis type="category" dataKey="group" width={40} />
-                                <Tooltip />
-                                <Bar dataKey="units" fill="#DC2626" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', marginTop: '8px' }}></div>
+                            <div>
+                                <h4 style={{ fontSize: '0.875rem' }}>Route Optimization Active</h4>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>AI has re-routed 12 ambulances avoiding Highway 4 traffic, saving ~14 mins avg.</p>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)', marginTop: '8px' }}></div>
+                            <div>
+                                <h4 style={{ fontSize: '0.875rem' }}>Organ Transport Delay</h4>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Flight tracking shows 15m delay for Heart Transport TX-204. ETA updated.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div style={{ padding: '0 2rem 2rem' }}>
-                <div className="card" style={{ padding: '1rem' }}>
-                    <h3 style={{ margin: '0 0 1rem' }}>Network Map</h3>
-                    <div ref={mapRef} style={{ height: 360, borderRadius: '8px', background: '#1f2937' }} />
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', fontSize: '0.8rem' }}>
-                        <span><span style={{ color: '#059669' }}>●</span> Available</span>
-                        <span><span style={{ color: '#D97706' }}>●</span> Low</span>
-                        <span><span style={{ color: '#DC2626' }}>●</span> Critical</span>
-                    </div>
-                </div>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Quick Access Modules</h2>
+            <div className="grid-4">
+                <ModuleShortcut 
+                    title="Emergency Coordination" 
+                    description="Dispatch resources and triage incoming crises." 
+                    icon={ShieldAlert} 
+                    path="/modules/emergency" 
+                />
+                <ModuleShortcut 
+                    title="Blood Exchange" 
+                    description="Manage inventory and cross-hospital logistics." 
+                    icon={Droplet} 
+                    path="/modules/blood" 
+                />
+                <ModuleShortcut 
+                    title="Organ Exchange" 
+                    description="Track critical organ transplants and matches." 
+                    icon={Heart} 
+                    path="/modules/organ" 
+                />
+                <ModuleShortcut 
+                    title="Hospital Network" 
+                    description="Directory and real-time capability matrix." 
+                    icon={Building2} 
+                    path="/modules/hospitals" 
+                />
             </div>
         </div>
     );
