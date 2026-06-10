@@ -368,8 +368,17 @@ const NewRequest = () => {
             }
         };
 
+        const onAccepted = (payload) => {
+            if (String(payload?._id) !== String(createdRequestId)) return;
+            log(`Accepted by ${payload.assignedHospital?.name || 'hospital'}`);
+            setIsSimulating(false);
+            showToast('Request accepted — opening delivery route', 'success');
+            navigate(`/map?request=${payload._id}`);
+        };
+
         socket.on('radius_expanded', onRadiusExpanded);
         socket.on('matches_updated', onMatchesUpdated);
+        socket.on('request_accepted', onAccepted);
 
         const poll = setInterval(async () => {
             try {
@@ -385,6 +394,7 @@ const NewRequest = () => {
         return () => {
             socket.off('radius_expanded', onRadiusExpanded);
             socket.off('matches_updated', onMatchesUpdated);
+            socket.off('request_accepted', onAccepted);
             clearInterval(poll);
         };
     }, [createdRequestId, isSimulating]);
@@ -440,11 +450,7 @@ const NewRequest = () => {
         setTimeout(() => {
             setSimStatus("Request Broadcasted!");
             log("System: Request is live. Waiting for acceptance...");
-            showToast('Request Live: Tracking Started', 'success');
-
-            setTimeout(() => {
-                navigate('/home');
-            }, 1000);
+            showToast('Request live — waiting for a hospital to accept', 'success');
         }, 3000);
     };
 

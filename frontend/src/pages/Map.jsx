@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
-import { hospitalService } from '../services/api';
+import { hospitalService, requestService } from '../services/api';
 import api from '../services/api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -23,8 +24,17 @@ const fetchRoute = async (fromLat, fromLng, toLat, toLng) => {
     }
 };
 
+const coordsFromHospital = (hospital) => {
+    const c = hospital?.location?.coordinates;
+    if (!c || c.length < 2) return null;
+    return { lat: c[1], lng: c[0], name: hospital.name || 'Hospital' };
+};
+
 const MapPage = () => {
     const { user } = useDonor();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestId = searchParams.get('request');
+
     const mapContainer = useRef(null);
     const mapInstance = useRef(null);
     const routeLayer = useRef(null);
@@ -37,6 +47,8 @@ const MapPage = () => {
     const [routeInfo, setRouteInfo] = useState(null);
     const [routeLoading, setRouteLoading] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [acceptedRequest, setAcceptedRequest] = useState(null);
+    const [mapInitialized, setMapInitialized] = useState(false);
 
     const myLat = user?.location?.coordinates?.[1];
     const myLng = user?.location?.coordinates?.[0];
@@ -56,25 +68,19 @@ const MapPage = () => {
 
     useEffect(() => { loadHospitals(); }, [loadHospitals]);
 
-    const drawRoute = useCallback(async (hospital) => {
+    const drawRouteOnMap = useCallback(async (fromLat, fromLng, toLat, toLng, label) => {
         const map = mapInstance.current;
-        if (!map || !hasOrigin) return;
-
-        const coords = hospital.location?.coordinates;
-        if (!coords || coords.length < 2) return;
-
-        const destLat = coords[1];
-        const destLng = coords[0];
+        if (!map) return;
 
         setRouteLoading(true);
-        setSelected(hospital);
+        setRouteInfo(null);
 
         if (routeLayer.current) {
             map.removeLayer(routeLayer.current);
             routeLayer.current = null;
         }
 
-        const route = await fetchRoute(myLat, myLng, destLat, destLng);
+        const route = await fetchRoute(fromLat, fromLng, toLat, toLng);
 
         if (!mapInstance.current) {
             setRouteLoading(false);
@@ -88,28 +94,90 @@ const MapPage = () => {
                 opacity: 0.9,
             }).addTo(mapInstance.current);
 
-            const bounds = routeLayer.current.getBounds().extend([myLat, myLng]);
+            const bounds = routeLayer.current.getBounds().extend([fromLat, fromLng]).extend([toLat, toLng]);
             mapInstance.current.fitBounds(bounds, { padding: [60, 60] });
 
             setRouteInfo({
-                name: hospital.name,
+                name: label,
                 distanceKm: route.distanceKm,
                 durationMin: route.durationMin,
             });
         } else {
             const fallback = L.polyline(
-                [[myLat, myLng], [destLat, destLng]],
+                [[fromLat, fromLng], [toLat, toLng]],
                 { color: '#2563EB', weight: 4, dashArray: '8,8' },
             ).addTo(mapInstance.current);
             routeLayer.current = fallback;
             mapInstance.current.fitBounds(fallback.getBounds(), { padding: [60, 60] });
-            setRouteInfo({ name: hospital.name, distanceKm: '—', durationMin: '—' });
+            setRouteInfo({ name: label, distanceKm: '—', durationMin: '—' });
         }
 
         setRouteLoading(false);
-    }, [hasOrigin, myLat, myLng]);
+    }, []);
+
+    const drawRoute = useCallback(async (hospital) => {
+        if (!hasOrigin) return;
+        const coords = hospital.location?.coordinates;
+        if (!coords || coords.length < 2) return;
+
+        setSelected(hospital);
+        setAcceptedRequest(null);
+        setSearchParams({});
+
+        await drawRouteOnMap(
+            myLat,
+            myLng,
+            coords[1],
+            coords[0],
+            hospital.name,
+        );
+    }, [hasOrigin, myLat, myLng, drawRouteOnMap, setSearchParams]);
 
     drawRouteRef.current = drawRoute;
+
+    const showAcceptedRequestRoute = useCallback(async (req) => {
+        const supplier = coordsFromHospital(req.assignedHospital);
+        const requester = coordsFromHospital(req.requestingHospital);
+        if (!supplier || !requester) return;
+
+        const map = mapInstance.current;
+        const layer = markersLayer.current;
+        if (!map || !layer) return;
+
+        layer.clearLayers();
+
+        const supplierIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div class='map-marker map-marker-peer'></div>",
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+        });
+        const requesterIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div class='map-marker map-marker-requester'></div>",
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+        });
+
+        L.marker([supplier.lat, supplier.lng], { icon: supplierIcon })
+            .addTo(layer)
+            .bindPopup(`<strong>${supplier.name}</strong><br>Supplying hospital`);
+
+        L.marker([requester.lat, requester.lng], { icon: requesterIcon })
+            .addTo(layer)
+            .bindPopup(`<strong>${requester.name}</strong><br>Requesting hospital`);
+
+        setAcceptedRequest(req);
+        setSelected(null);
+
+        await drawRouteOnMap(
+            supplier.lat,
+            supplier.lng,
+            requester.lat,
+            requester.lng,
+            `${supplier.name} → ${requester.name}`,
+        );
+    }, [drawRouteOnMap]);
 
     const clearRoute = () => {
         if (routeLayer.current && mapInstance.current) {
@@ -118,6 +186,9 @@ const MapPage = () => {
         }
         setSelected(null);
         setRouteInfo(null);
+        setAcceptedRequest(null);
+        setSearchParams({});
+        loadHospitals();
     };
 
     useEffect(() => {
@@ -131,6 +202,7 @@ const MapPage = () => {
         map.setView(center, hasOrigin ? 11 : 10);
         mapInstance.current = map;
         mapReady.current = true;
+        setMapInitialized(true);
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO',
@@ -142,11 +214,14 @@ const MapPage = () => {
             routeLayer.current = null;
             markersLayer.current = null;
             mapReady.current = false;
+            setMapInitialized(false);
             destroyLeafletMap(mapInstance, mapContainer);
         };
     }, [hasOrigin, myLat, myLng]);
 
     useEffect(() => {
+        if (requestId) return;
+
         const map = mapInstance.current;
         const layer = markersLayer.current;
         if (!map || !layer || loading) return;
@@ -174,12 +249,28 @@ const MapPage = () => {
         });
 
         const points = peerHospitals.map((h) => [h.location.coordinates[1], h.location.coordinates[0]]);
-        if (points.length > 0) {
+        if (points.length > 0 && !routeInfo) {
             map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
-        } else if (hasOrigin) {
+        } else if (hasOrigin && !routeInfo) {
             map.setView([myLat, myLng], 11);
         }
-    }, [hospitals, loading, hasOrigin, myLat, myLng, user?._id]);
+    }, [hospitals, loading, hasOrigin, myLat, myLng, user?._id, requestId, routeInfo]);
+
+    useEffect(() => {
+        if (!requestId || !mapInitialized) return;
+
+        let cancelled = false;
+        requestService.getById(requestId)
+            .then(({ data }) => {
+                if (cancelled || !data) return;
+                if (data.status === 'Pending' && data.assignedHospital && data.requestingHospital) {
+                    showAcceptedRequestRoute(data);
+                }
+            })
+            .catch(console.error);
+
+        return () => { cancelled = true; };
+    }, [requestId, mapInitialized, showAcceptedRequestRoute]);
 
     return (
         <div className="chih-page chih-page-full">
@@ -194,57 +285,93 @@ const MapPage = () => {
             </div>
 
             <div className="chih-map-sidebar">
-                <div className="chih-panel">
-                    <div className="chih-panel-header">
-                        <h2>Network Hospitals</h2>
-                        <span className="chih-panel-tag">{hospitals.length} on map</span>
-                    </div>
-                    {!hasOrigin && (
+                {acceptedRequest ? (
+                    <div className="chih-panel">
+                        <div className="chih-panel-header">
+                            <h2>Accepted Request Route</h2>
+                            <span className="chih-panel-tag chih-status-ok">Pending</span>
+                        </div>
                         <p className="chih-muted" style={{ marginBottom: '0.75rem' }}>
-                            Your hospital location is not set. Re-register or update your profile to enable routes.
+                            Optimal driving route between the supplying and requesting hospitals.
                         </p>
-                    )}
-                    {hasOrigin && (
-                        <p className="chih-muted" style={{ marginBottom: '0.75rem', fontSize: '0.8rem' }}>
-                            Routes are calculated from your hospital to the selected destination.
-                        </p>
-                    )}
-                    <div className="chih-map-list">
-                        {loading ? (
-                            <p className="chih-muted">Loading hospitals...</p>
-                        ) : hospitals.length === 0 ? (
-                            <p className="chih-muted">No other hospitals on the network yet.</p>
-                        ) : (
-                            hospitals.map((h) => (
-                                <button
-                                    key={h._id}
-                                    type="button"
-                                    className={`chih-map-list-item ${selected?._id === h._id ? 'chih-map-list-item-active' : ''}`}
-                                    onClick={() => drawRoute(h)}
-                                    disabled={!hasOrigin}
-                                >
-                                    <span className="chih-map-list-name">{h.name}</span>
-                                    <span className="chih-map-list-meta">{h.email}</span>
-                                </button>
-                            ))
-                        )}
+                        <div className="net-info-list" style={{ marginBottom: '1rem' }}>
+                            <li>
+                                <div>
+                                    <label>From (Supplier)</label>
+                                    <span>{acceptedRequest.assignedHospital?.name}</span>
+                                </div>
+                            </li>
+                            <li>
+                                <div>
+                                    <label>To (Requester)</label>
+                                    <span>{acceptedRequest.requestingHospital?.name}</span>
+                                </div>
+                            </li>
+                            <li>
+                                <div>
+                                    <label>Patient</label>
+                                    <span>{acceptedRequest.patientName}</span>
+                                </div>
+                            </li>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="chih-panel">
+                        <div className="chih-panel-header">
+                            <h2>Network Hospitals</h2>
+                            <span className="chih-panel-tag">{hospitals.length} on map</span>
+                        </div>
+                        {!hasOrigin && (
+                            <p className="chih-muted" style={{ marginBottom: '0.75rem' }}>
+                                Your hospital location is not set. Re-register or update your profile to enable routes.
+                            </p>
+                        )}
+                        {hasOrigin && (
+                            <p className="chih-muted" style={{ marginBottom: '0.75rem', fontSize: '0.8rem' }}>
+                                Routes are calculated from your hospital to the selected destination.
+                            </p>
+                        )}
+                        <div className="chih-map-list">
+                            {loading ? (
+                                <p className="chih-muted">Loading hospitals...</p>
+                            ) : hospitals.length === 0 ? (
+                                <p className="chih-muted">No other hospitals on the network yet.</p>
+                            ) : (
+                                hospitals.map((h) => (
+                                    <button
+                                        key={h._id}
+                                        type="button"
+                                        className={`chih-map-list-item ${selected?._id === h._id ? 'chih-map-list-item-active' : ''}`}
+                                        onClick={() => drawRoute(h)}
+                                        disabled={!hasOrigin}
+                                    >
+                                        <span className="chih-map-list-name">{h.name}</span>
+                                        <span className="chih-map-list-meta">{h.email}</span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {(routeInfo || routeLoading) && (
                     <div className="chih-panel chih-route-panel">
                         <div className="chih-panel-header">
-                            <h2>Route to {routeInfo?.name || selected?.name}</h2>
+                            <h2>{acceptedRequest ? 'Delivery Route' : `Route to ${routeInfo?.name || selected?.name}`}</h2>
                         </div>
                         {routeLoading ? (
-                            <p className="chih-muted">Calculating route...</p>
+                            <p className="chih-muted">Calculating optimal route...</p>
                         ) : (
                             <>
                                 <div className="chih-route-stats">
                                     <div><span>Distance</span><strong>{routeInfo.distanceKm} km</strong></div>
                                     <div><span>Est. Time</span><strong>{routeInfo.durationMin} min</strong></div>
                                 </div>
-                                <p className="chih-muted">Driving route from your hospital</p>
+                                <p className="chih-muted">
+                                    {acceptedRequest
+                                        ? 'Driving route from supplying hospital to requesting hospital'
+                                        : 'Driving route from your hospital'}
+                                </p>
                                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearRoute} style={{ marginTop: '0.75rem' }}>
                                     Clear Route
                                 </button>

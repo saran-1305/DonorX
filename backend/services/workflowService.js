@@ -112,6 +112,11 @@ exports.handleDenial = async (requestId, hospitalId) => {
 };
 
 exports.handleAcceptance = async (requestId, hospitalId) => {
+    const hospital = await Hospital.findById(hospitalId);
+    if (!hospital) {
+        throw new Error('Hospital not found');
+    }
+
     const request = await EmergencyRequest.findById(requestId);
     if (!request) {
         throw new Error('Request not found');
@@ -122,13 +127,11 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
     }
 
     const hospitalIdStr = hospitalId.toString();
-    const matchesStr = request.potentialMatches.map((m) => m.toString());
+    const matchesStr = (request.potentialMatches || []).map((m) => m.toString());
 
     if (!matchesStr.includes(hospitalIdStr)) {
         throw new Error('Hospital not authorized to accept this request. Hospital not in potential matches.');
     }
-
-    const hospital = await Hospital.findById(hospitalId);
 
     const { type, group, quantity, resourceCategory } = request.resourceNeeded;
     const category =
@@ -136,15 +139,17 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         (['ICU_BED', 'VENTILATOR', 'OXYGEN_CYLINDER', 'AMBULANCE'].includes(type) ? 'RESOURCE' : type);
 
     if (category === 'RESOURCE') {
-        const resourceItem = hospital.resources?.find((r) => r.resourceType === type);
+        const resources = hospital.resources || [];
+        const resourceItem = resources.find((r) => r.resourceType === type);
         if (!resourceItem || resourceItem.available < quantity) {
-            throw new Error('Insufficient resources');
+            throw new Error(`Insufficient ${type.replace(/_/g, ' ')} — need ${quantity}, have ${resourceItem?.available ?? 0}`);
         }
         resourceItem.available -= quantity;
     } else {
-        const inventoryItem = hospital.inventory.find((i) => i.type === type && i.group === group);
+        const inventory = hospital.inventory || [];
+        const inventoryItem = inventory.find((i) => i.type === type && i.group === group);
         if (!inventoryItem || inventoryItem.quantity < quantity) {
-            throw new Error('Insufficient inventory');
+            throw new Error(`Insufficient ${group} ${type} — need ${quantity}, have ${inventoryItem?.quantity ?? 0}`);
         }
         inventoryItem.quantity -= quantity;
     }
@@ -153,22 +158,34 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
 
     request.status = 'Pending';
     request.assignedHospital = hospitalId;
+    request.potentialMatches = [];
     await request.save();
 
     await createAuditLog(requestId, 'REQUEST_ACCEPTED', { hospitalId, name: hospital.name });
 
     const updatedRequest = await EmergencyRequest.findById(requestId)
-        .populate('assignedHospital', 'name location')
-        .populate('requestingHospital', 'name location');
+        .populate('assignedHospital', 'name location email')
+        .populate('requestingHospital', 'name location email');
 
     await emitToHospital(request.requestingHospital, 'request_accepted', updatedRequest);
+    await emitToHospital(hospitalId, 'request_accepted', updatedRequest);
+
+    const routeLink = `/map?request=${requestId}`;
 
     await createNotification(request.requestingHospital, {
         type: 'ACCEPTED',
         title: 'Request accepted',
         message: `${hospital.name} accepted your emergency request`,
-        link: '/home',
+        link: routeLink,
         metadata: { requestId, hospitalId },
+    });
+
+    await createNotification(hospitalId, {
+        type: 'ACCEPTED',
+        title: 'Request accepted',
+        message: `You accepted the request from ${updatedRequest.requestingHospital?.name || 'a hospital'}`,
+        link: routeLink,
+        metadata: { requestId, hospitalId: request.requestingHospital },
     });
 
     try {
@@ -176,6 +193,8 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
     } catch (transportErr) {
         console.error('Transport start error (non-critical):', transportErr.message);
     }
+
+    return updatedRequest;
 };
 
 exports.updateLifecycle = async (requestId, status, locationData) => {

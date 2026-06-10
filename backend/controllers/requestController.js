@@ -260,8 +260,8 @@ exports.getMyRequests = async (req, res) => {
 exports.getIncomingRequests = async (req, res) => {
     try {
         const requests = await EmergencyRequest.find({
-            potentialMatches: req.user._id,
-            status: 'Generated'
+            status: 'Generated',
+            potentialMatches: { $in: [req.user._id] },
         })
             .populate('requestingHospital', 'name location')
             .sort({ priorityScore: -1 }); // High priority first

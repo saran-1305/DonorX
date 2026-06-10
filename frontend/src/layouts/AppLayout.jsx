@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
 import IncomingRequestModal from '../components/IncomingRequestModal';
+import RequestAcceptedListener from '../components/RequestAcceptedListener';
 import ToastContainer from '../components/ToastContainer';
 
 const AppLayout = () => {
@@ -16,6 +17,7 @@ const AppLayout = () => {
                 </main>
             </div>
             <IncomingRequestModal />
+            <RequestAcceptedListener />
             <ToastContainer />
         </div>
     );

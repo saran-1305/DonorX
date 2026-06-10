@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Modal from './Modal';
 import { requestService, inventoryService, resourceService } from '../services/api';
 import { useDonor } from '../context/DonorContext';
 import { useNavigate } from 'react-router-dom';
+import { getSocket, joinHospitalRoom } from '../services/socket';
 
 const RESOURCE_LABELS = {
     ICU_BED: 'ICU Bed',
@@ -58,28 +59,49 @@ const IncomingRequestModal = () => {
         }
     };
 
-    const checkForRequests = async () => {
+    const openRequest = useCallback((incReq) => {
+        if (!incReq?._id) return;
+        if (lastShownRequestIdRef.current === incReq._id) return;
+        lastShownRequestIdRef.current = incReq._id;
+        setRequest(incReq);
+        setIsOpen(true);
+        setInventoryMatch(null);
+        checkInventory(incReq);
+    }, []);
+
+    const checkForRequests = useCallback(async () => {
+        if (!user?._id) return;
         try {
             const { data } = await requestService.getIncoming();
             if (data?.length > 0) {
-                const incReq = data[0];
-                if (lastShownRequestIdRef.current !== incReq._id) {
-                    lastShownRequestIdRef.current = incReq._id;
-                    setRequest(incReq);
-                    setIsOpen(true);
-                    checkInventory(incReq);
-                }
+                openRequest(data[0]);
             }
-        } catch {
-            // silent fail
+        } catch (err) {
+            console.error('Incoming request poll error:', err);
         }
-    };
+    }, [user, openRequest]);
 
     useEffect(() => {
+        if (!user?._id) return;
+        joinHospitalRoom(user._id);
         checkForRequests();
-        const poll = setInterval(checkForRequests, 3000);
-        return () => clearInterval(poll);
-    }, []);
+        const poll = setInterval(checkForRequests, 5000);
+
+        const socket = getSocket();
+        const onNewRequest = (payload) => {
+            if (payload?.status === 'Generated') {
+                openRequest(payload);
+            } else {
+                checkForRequests();
+            }
+        };
+        socket.on('new_request', onNewRequest);
+
+        return () => {
+            clearInterval(poll);
+            socket.off('new_request', onNewRequest);
+        };
+    }, [user, checkForRequests, openRequest]);
 
     useEffect(() => {
         if (!isOpen || !request) return;
@@ -104,6 +126,7 @@ const IncomingRequestModal = () => {
             showToast('Request auto-denied after 3 minutes', 'warning');
             setIsOpen(false);
             setRequest(null);
+            lastShownRequestIdRef.current = null;
         } catch (error) {
             console.error('Auto-deny error:', error);
         }
@@ -111,21 +134,24 @@ const IncomingRequestModal = () => {
 
     const handleRespond = async (status) => {
         if (!request) return;
+        const requestId = request._id;
         try {
-            await requestService.respond(request._id, status);
+            const { data } = await requestService.respond(requestId, status);
             showToast(
-                status === 'Accept' ? 'Request Accepted! Redirecting...' : 'Request Denied',
+                status === 'Accept' ? 'Request accepted! Opening route...' : 'Request denied',
                 status === 'Accept' ? 'success' : 'info'
             );
             setIsOpen(false);
             setRequest(null);
             setTimeLeft(180);
+            lastShownRequestIdRef.current = null;
             if (status === 'Accept') {
-                setTimeout(() => navigate('/home'), 1000);
+                navigate(`/map?request=${requestId}`);
             }
         } catch (error) {
             const errorMessage = error.response?.data?.message || error.message || 'Failed to respond';
             showToast(`Failed to respond: ${errorMessage}`, 'error');
+            checkForRequests();
         }
     };
 
@@ -158,7 +184,14 @@ const IncomingRequestModal = () => {
                 </div>
 
                 {inventoryMatch && (
-                    <div style={{ marginBottom: '1.5rem', padding: '0.75rem', background: '#ECFDF5', color: '#065F46', borderRadius: '6px', fontWeight: 'bold' }}>
+                    <div style={{
+                        marginBottom: '1.5rem',
+                        padding: '0.75rem',
+                        background: inventoryMatch.startsWith('WARNING') ? '#FEF3C7' : '#ECFDF5',
+                        color: inventoryMatch.startsWith('WARNING') ? '#92400E' : '#065F46',
+                        borderRadius: '6px',
+                        fontWeight: 'bold',
+                    }}>
                         {inventoryMatch}
                     </div>
                 )}

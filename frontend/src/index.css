@@ -1911,6 +1911,13 @@ tr:hover {
     cursor: pointer;
 }
 
+.map-marker-requester {
+    width: 18px;
+    height: 18px;
+    background: #DC2626;
+    cursor: pointer;
+}
+
 .notification-icon {
     width: 36px;
     height: 36px;

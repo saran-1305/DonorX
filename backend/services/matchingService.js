@@ -101,15 +101,18 @@ exports.findMatchingHospitals = async (request) => {
             isInventoryMatch(hospital, resourceNeeded)
         );
 
-        if (matchedHospitals.length === 0 && hospitalsInRadius.length > 0) {
-            if (process.env.NODE_ENV === 'development') {
-                console.warn('DEMO MODE: returning all hospitals — not for production');
-                return hospitalsInRadius.map((h) => h._id);
-            }
-            return [];
+        if (matchedHospitals.length > 0) {
+            return matchedHospitals.map((h) => h._id);
         }
 
-        return matchedHospitals.map((h) => h._id);
+        if (hospitalsInRadius.length > 0) {
+            console.warn(
+                `No strict inventory match for request — notifying ${hospitalsInRadius.length} hospital(s) in search area`
+            );
+            return hospitalsInRadius.map((h) => h._id);
+        }
+
+        return [];
     } catch (error) {
         console.error('Error in findMatchingHospitals:', error);
         return [];
