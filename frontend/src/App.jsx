@@ -94,6 +94,9 @@ function App() {
                                 <NationalHealthGrid />
                             </ProtectedRoute>
                         } />
+
+                        {/* Catch-all route to redirect legacy/unknown paths to command center */}
+                        <Route path="*" element={<Navigate to="/command-center" replace />} />
                     </Route>
                 </Routes>
             </Router>

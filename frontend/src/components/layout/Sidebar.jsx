@@ -29,13 +29,13 @@ const Sidebar = () => {
 
     return (
         <aside className="os-sidebar">
-            <div className="flex items-center gap-sm" style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
-                <Activity color="var(--primary-color)" size={28} />
-                <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.03em' }}>DonorX OS</span>
+            <div className="flex items-center gap-sm" style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', minWidth: '260px' }}>
+                <Activity color="var(--primary-color)" size={28} style={{ flexShrink: 0 }} />
+                <span className="logo-text" style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.03em' }}>DonorX OS</span>
             </div>
             
-            <div style={{ padding: '1rem 0', flex: 1, overflowY: 'auto' }}>
-                <div style={{ padding: '0 1.5rem', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ padding: '1rem 0', flex: 1, overflowY: 'auto', minWidth: '260px' }}>
+                <div className="logo-text" style={{ padding: '0 1.5rem', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Core Modules
                 </div>
                 <nav>
@@ -48,17 +48,18 @@ const Sidebar = () => {
                                 to={item.path}
                                 className={`nav-item ${isActive ? 'active' : ''}`}
                             >
-                                <Icon size={18} />
-                                {item.label}
+                                <Icon size={20} style={{ flexShrink: 0 }} />
+                                <span className="nav-label">{item.label}</span>
                             </NavLink>
                         );
                     })}
                 </nav>
             </div>
             
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
-                <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'flex-start' }}>
-                    <Settings size={18} /> Settings
+            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', minWidth: '260px' }}>
+                <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'flex-start', border: 'none', background: 'transparent', padding: '0.5rem 0' }}>
+                    <Settings size={20} style={{ flexShrink: 0, marginLeft: '0.25rem' }} /> 
+                    <span className="nav-label">Settings</span>
                 </button>
             </div>
         </aside>
