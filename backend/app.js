@@ -55,6 +55,18 @@ app.use('/api/resources', resourceRoutes);
 const hospitalRoutes = require('./routes/hospitalRoutes');
 app.use('/api/hospitals', hospitalRoutes);
 
+const consultationRoutes = require('./routes/consultationRoutes');
+app.use('/api/consultations', consultationRoutes);
+
+const analyticsRoutes = require('./routes/analyticsRoutes');
+app.use('/api/analytics', analyticsRoutes);
+
+const notificationRoutes = require('./routes/notificationRoutes');
+app.use('/api/notifications', notificationRoutes);
+
+const chatRoutes = require('./routes/chatRoutes');
+app.use('/api/chat', chatRoutes);
+
 app.use((err, req, res, next) => {
     if (res.headersSent) {
         if (typeof next === 'function') {

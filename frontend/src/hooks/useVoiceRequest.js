@@ -199,12 +199,28 @@ const parseTranscript = (text) => {
         conditionType = 'ICU / Critical Care';
     }
 
-    // 4. Resource Type & Specific Organ
+    // 4. Resource Type & Specific Organ / Facility
     let resourceType = 'blood';
     let organType = '';
+    let facilityType = '';
+
+    const facilityKeywords = {
+        ICU_BED: ['icu bed', 'icu', 'intensive care', 'critical bed', 'ஐ.சி.யு'],
+        VENTILATOR: ['ventilator', 'vent', 'breathing machine', 'life support machine', 'வெண்டிலேட்டர்'],
+        OXYGEN_CYLINDER: ['oxygen', 'o2', 'oxygen cylinder', 'oxygen tank', 'ஆக்சிஜன்'],
+        AMBULANCE: ['ambulance', 'emergency vehicle', 'transport vehicle', 'ஆம்புலன்ஸ்'],
+    };
+
+    for (const [type, keywords] of Object.entries(facilityKeywords)) {
+        if (keywords.some((kw) => lower.includes(kw))) {
+            resourceType = 'facility';
+            facilityType = type;
+            break;
+        }
+    }
 
     const organKeywords = ['organ', 'kidney', 'liver', 'heart', 'lung', 'lungs', 'eyes', 'cornea', 'pancreas', 'உறுப்பு', 'கிட்னி', 'லிவர்', 'இதயம்', 'நுரையீரல்'];
-    if (organKeywords.some(w => lower.includes(w))) {
+    if (resourceType !== 'facility' && organKeywords.some(w => lower.includes(w))) {
         resourceType = 'organ';
     }
 
@@ -284,5 +300,6 @@ const parseTranscript = (text) => {
         resourceType,
         quantity,
         organType,
+        facilityType,
     };
 };

@@ -1,109 +1,158 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useDonor } from '../context/DonorContext';
 import { requestService } from '../services/api';
+import { getSocket, joinHospitalRoom } from '../services/socket';
 import { useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
+const RESOURCE_LABELS = {
+    ICU_BED: 'ICU Bed',
+    VENTILATOR: 'Ventilator',
+    OXYGEN_CYLINDER: 'Oxygen Cylinder',
+    AMBULANCE: 'Ambulance',
+};
+
 const Tracking = () => {
-    const { addAuditLog, showToast } = useDonor();
+    const { addAuditLog, showToast, user } = useDonor();
     const navigate = useNavigate();
     const mapContainer = useRef(null);
     const mapInstance = useRef(null);
+    const vehicleMarker = useRef(null);
+    const routeLayer = useRef(null);
+    const routeLine = useRef(null);
+    const [routeInfo, setRouteInfo] = useState(null);
     const [activeRequest, setActiveRequest] = useState(null);
-    const [distanceKm, setDistanceKm] = useState(null);
+    const [transport, setTransport] = useState(null);
 
-    // Initial Data: Default to Chennai if no data
-    const [locations, setLocations] = useState({
-        user: [13.0418, 80.2341],
-        hospital: [13.1075, 80.2878]
-    });
-
-    useEffect(() => {
-        const fetchDeep = async () => {
-            try {
-                const { data } = await requestService.getMyRequests();
-                // Prefer a request that has been accepted and is in transit
-                const active = data.find(r => r.status === 'Pending') || data[0];
-                if (active) {
-                    setActiveRequest(active);
-
-                    // Request origin
-                    if (active.location && active.location.coordinates) {
-                        // Mongo: [lng, lat] -> Leaflet: [lat, lng]
-                        const [lng, lat] = active.location.coordinates;
-                        setLocations(prev => ({
-                            ...prev,
-                            user: [lat, lng]
-                        }));
-                    }
-
-                    // Matched hospital location (if assigned)
-                    if (active.assignedHospital && active.assignedHospital.location && active.assignedHospital.location.coordinates) {
-                        const [hLng, hLat] = active.assignedHospital.location.coordinates;
-                        setLocations(prev => ({
-                            ...prev,
-                            hospital: [hLat, hLng]
-                        }));
-                    }
-                } else {
-                    showToast('No active emergency requests found.', 'info');
+    const fetchActive = useCallback(async () => {
+        try {
+            const { data } = await requestService.getMyRequests();
+            const active = data.find((r) => r.status === 'Pending') || data.find((r) => r.status === 'Generated');
+            if (active) {
+                setActiveRequest(active);
+                try {
+                    const { data: tracking } = await requestService.getTransport(active._id);
+                    setTransport(tracking);
+                } catch {
+                    // transport may not exist yet
                 }
-            } catch (e) {
-                console.error(e);
             }
-        };
-        fetchDeep();
+        } catch (e) {
+            console.error(e);
+        }
     }, []);
 
-    // Leaflet map: route between hospital and patient, with distance
+    useEffect(() => {
+        fetchActive();
+        if (user?._id) joinHospitalRoom(user._id);
+    }, [fetchActive, user]);
+
+    useEffect(() => {
+        const socket = getSocket();
+        const onTransport = (payload) => {
+            const reqId = String(payload.requestId || '');
+            if (activeRequest && reqId === String(activeRequest._id)) {
+                setTransport(payload);
+            } else if (!activeRequest && reqId) {
+                fetchActive();
+            }
+        };
+        const onAccepted = () => fetchActive();
+
+        socket.on('transport_update', onTransport);
+        socket.on('request_accepted', onAccepted);
+        return () => {
+            socket.off('transport_update', onTransport);
+            socket.off('request_accepted', onAccepted);
+        };
+    }, [activeRequest, fetchActive]);
+
     useEffect(() => {
         if (!mapContainer.current) return;
 
-        const centerLat = (locations.user[0] + locations.hospital[0]) / 2;
-        const centerLng = (locations.user[1] + locations.hospital[1]) / 2;
+        const origin = transport
+            ? [transport.origin.lat, transport.origin.lng]
+            : activeRequest?.assignedHospital?.location?.coordinates
+                ? [activeRequest.assignedHospital.location.coordinates[1], activeRequest.assignedHospital.location.coordinates[0]]
+                : [13.1075, 80.2878];
+
+        const dest = transport
+            ? [transport.destination.lat, transport.destination.lng]
+            : activeRequest?.location?.coordinates
+                ? [activeRequest.location.coordinates[1], activeRequest.location.coordinates[0]]
+                : [13.0418, 80.2341];
+
+        const current = transport?.currentPosition
+            ? [transport.currentPosition.lat, transport.currentPosition.lng]
+            : origin;
 
         if (mapInstance.current) {
             mapInstance.current.remove();
             mapInstance.current = null;
         }
 
+        const centerLat = (origin[0] + dest[0]) / 2;
+        const centerLng = (origin[1] + dest[1]) / 2;
         const map = L.map(mapContainer.current).setView([centerLat, centerLng], 12);
         mapInstance.current = map;
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
         }).addTo(map);
-
-        const userIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: "<div style='background-color:#D32F2F; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'></div>",
-            iconSize: [16, 16]
-        });
-        L.marker(locations.user, { icon: userIcon }).addTo(map).bindPopup('Patient / Request origin');
 
         const hospitalIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: "<div style='background-color:#00796B; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'></div>",
-            iconSize: [16, 16]
+            html: "<div style='background-color:#00796B;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);'></div>",
+            iconSize: [16, 16],
         });
-        L.marker(locations.hospital, { icon: hospitalIcon }).addTo(map).bindPopup('Matched hospital (source)');
+        L.marker(origin, { icon: hospitalIcon }).addTo(map).bindPopup(transport?.origin?.label || 'Source Hospital');
 
-        const latlngs = [locations.user, locations.hospital];
-        const routeLine = L.polyline(latlngs, { color: '#3B82F6', weight: 4, opacity: 0.7, dashArray: '10, 10' }).addTo(map);
+        const destIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background-color:#D32F2F;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);'></div>",
+            iconSize: [16, 16],
+        });
+        L.marker(dest, { icon: destIcon }).addTo(map).bindPopup('Patient / Destination');
 
-        const R = 6371;
-        const dLat = (locations.hospital[0] - locations.user[0]) * Math.PI / 180;
-        const dLon = (locations.hospital[1] - locations.user[1]) * Math.PI / 180;
-        const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(locations.user[0] * Math.PI / 180) * Math.cos(locations.hospital[0] * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c;
-        setDistanceKm(distance);
-        routeLine.bindPopup(`Distance: ${distance.toFixed(2)} km`).openPopup();
-        map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+        routeLine.current = L.polyline([origin, dest], {
+            color: '#94A3B8', weight: 3, opacity: 0.5, dashArray: '8, 8',
+        }).addTo(map);
+        routeLayer.current = routeLine.current;
+
+        const fetchOptimalRoute = async () => {
+            try {
+                const url = `https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.code === 'Ok' && data.routes?.[0]) {
+                    const route = data.routes[0];
+                    const coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+                    if (routeLayer.current) map.removeLayer(routeLayer.current);
+                    routeLayer.current = L.polyline(coords, {
+                        color: '#2563EB', weight: 5, opacity: 0.85,
+                    }).addTo(map);
+                    setRouteInfo({
+                        distanceKm: (route.distance / 1000).toFixed(2),
+                        durationMin: Math.round(route.duration / 60),
+                    });
+                    map.fitBounds(routeLayer.current.getBounds(), { padding: [50, 50] });
+                }
+            } catch {
+                // keep straight line fallback
+            }
+        };
+        fetchOptimalRoute();
+
+        const vehicleIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background-color:#2563EB;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 4px 8px rgba(37,99,235,0.5);animation:pulse 1.5s infinite;'></div>",
+            iconSize: [20, 20],
+        });
+        vehicleMarker.current = L.marker(current, { icon: vehicleIcon }).addTo(map)
+            .bindPopup(`In Transit • ${transport?.progress || 0}%`).openPopup();
+
+        map.fitBounds(L.latLngBounds([origin, dest, current]), { padding: [50, 50] });
 
         return () => {
             if (mapInstance.current) {
@@ -111,99 +160,99 @@ const Tracking = () => {
                 mapInstance.current = null;
             }
         };
-    }, [locations]);
+    }, [transport, activeRequest]);
+
+    useEffect(() => {
+        if (vehicleMarker.current && transport?.currentPosition) {
+            const pos = [transport.currentPosition.lat, transport.currentPosition.lng];
+            vehicleMarker.current.setLatLng(pos);
+            vehicleMarker.current.setPopupContent(`In Transit • ${transport.progress}% • ETA ${transport.etaMinutes} min`);
+        }
+    }, [transport]);
 
     const getResourceDisplay = () => {
-        if (!activeRequest || !activeRequest.resourceNeeded) return "Critical Resources";
+        if (transport?.resourceLabel) return transport.resourceLabel;
+        if (!activeRequest?.resourceNeeded) return 'Critical Resources';
         const { type, group, quantity } = activeRequest.resourceNeeded;
-        if (type === 'BLOOD') {
-            return `${quantity} Units of ${group} Blood`;
-        }
-        if (type === 'ORGAN') {
-            return `${quantity} x ${group}`;
-        }
-        return 'Critical Resources';
+        if (type === 'BLOOD') return `${quantity} Units of ${group} Blood`;
+        if (type === 'ORGAN') return `${quantity} x ${group}`;
+        return `${quantity} x ${RESOURCE_LABELS[type] || type.replace(/_/g, ' ')}`;
     };
 
     const completeRequest = async () => {
         if (!activeRequest) return;
         try {
-            await requestService.updateStatus(activeRequest._id, 'Completed', {
-                completedAt: new Date().toISOString()
-            });
-            addAuditLog('Delivery Completed', `Resources delivered successfully to ${activeRequest.patientName}`);
-            showToast("Delivery Confirmed. Protocol Solved.", "success");
-            setTimeout(() => navigate('/dashboard'), 500);
+            await requestService.updateStatus(activeRequest._id, 'Completed');
+            addAuditLog('Delivery Completed', `Resources delivered to ${activeRequest.patientName}`);
+            showToast('Delivery confirmed.', 'success');
+            setTimeout(() => navigate('/home'), 500);
         } catch (e) {
-            console.error(e);
-            showToast('Failed to update request status.', 'error');
+            showToast('Failed to update status.', 'error');
         }
     };
 
-    const denyRequest = async () => {
-        if (!activeRequest) {
-            navigate('/dashboard');
-            return;
-        }
+    const cancelRequest = async () => {
+        if (!activeRequest) { navigate('/home'); return; }
         try {
-            await requestService.updateStatus(activeRequest._id, 'Ended', {
-                cancelledAt: new Date().toISOString()
-            });
-            addAuditLog('Request Cancelled', `User cancelled request for ${activeRequest.patientName}`);
+            await requestService.updateStatus(activeRequest._id, 'Ended');
         } catch (e) {
             console.error(e);
         } finally {
-            navigate('/dashboard');
+            navigate('/home');
         }
     };
 
+    const statusLabel = transport?.status?.replace(/_/g, ' ') || (activeRequest?.status === 'Pending' ? 'Awaiting Dispatch' : 'Searching');
+
     return (
-        <div className="container" style={{ padding: '1rem', height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            <div
-                ref={mapContainer}
-                className="map-container"
-                style={{ height: '60vh', width: '100%', borderRadius: '1rem', zIndex: 1 }}
-            ></div>
+        <div className="chih-page chih-page-full">
+            <div ref={mapContainer} className="chih-tracking-map" />
 
-            <div className="overlay-card animate-fade-in"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                    position: 'absolute', bottom: '2rem', left: '2rem', right: '2rem',
-                    background: 'white', padding: '1.5rem', borderRadius: '1rem',
-                    boxShadow: 'var(--shadow-lg)', zIndex: 9999, pointerEvents: 'auto', display: 'flex',
-                    justifyContent: 'space-between', alignItems: 'center', maxWidth: '800px', margin: '0 auto'
-                }}>
-                <div className="flex items-center gap-md">
-                    <div style={{ background: '#ECFDF5', padding: '1rem', borderRadius: '50%', color: '#059669' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path
-                                d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                        </svg>
+            <div className="chih-tracking-overlay animate-fade-in">
+                <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+                    <div className="flex items-center gap-md">
+                        <div style={{ background: '#EFF6FF', padding: '1rem', borderRadius: '50%', color: '#2563EB' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" />
+                                <path d="M15 18H9" /><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+                                <circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 style={{ marginBottom: '0.25rem' }}>
+                                Live Tracking: {activeRequest?.assignedHospital?.name || 'Awaiting Match'}
+                            </h3>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+                                {getResourceDisplay()}
+                                {transport && (
+                                    <> • {routeInfo?.distanceKm || transport.distanceKm} km • ETA {routeInfo?.durationMin || transport.etaMinutes} min • {transport.progress}% complete</>
+                                )}
+                            </p>
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <span className="badge badge-high">{statusLabel}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <h3 style={{ marginBottom: '0.25rem' }}>
-                            Match Confirmed: {activeRequest?.assignedHospital?.name || 'Matched Hospital'}
-                        </h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            Transporting <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{getResourceDisplay()}</span>
-                            {distanceKm !== null && (
-                                <>
-                                    {' • Distance: '}
-                                    <span style={{ color: 'var(--primary-color)', fontWeight: 700 }}>
-                                        {distanceKm.toFixed(2)} km
-                                    </span>
-                                </>
-                            )}
-                        </p>
+                    <div className="flex gap-sm">
+                        <button onClick={cancelRequest} className="btn" style={{ border: '1px solid var(--border-color)', color: 'var(--danger)' }}>
+                            Cancel
+                        </button>
+                        {activeRequest?.status === 'Pending' && (
+                            <button onClick={completeRequest} className="btn btn-primary">Mark Delivered</button>
+                        )}
                     </div>
                 </div>
-
-                <div className="flex gap-sm">
-                    <button onClick={denyRequest} className="btn"
-                        style={{ border: '1px solid var(--border-color)', color: 'var(--danger)' }}>Deny / Cancel</button>
-                    <button onClick={completeRequest} className="btn btn-primary">Mark Delivered</button>
-                </div>
+                {transport && (
+                    <div style={{ marginTop: '1rem' }}>
+                        <div style={{ background: '#E5E7EB', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+                            <div style={{
+                                width: `${transport.progress}%`, height: '100%',
+                                background: 'linear-gradient(90deg, #2563EB, #059669)',
+                                transition: 'width 0.5s ease',
+                            }} />
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDonor } from '../context/DonorContext';
 import { requestService, assistService } from '../services/api';
+import { getSocket, joinRequestRoom } from '../services/socket';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import 'leaflet/dist/leaflet.css';
@@ -73,11 +74,15 @@ const NewRequest = () => {
             } else if (parsed.resourceType === 'organ') {
                 next.organQty = parsed.quantity || next.organQty;
                 if (parsed.organType) next.organType = parsed.organType;
+            } else if (parsed.resourceType === 'facility') {
+                next.facilityType = parsed.facilityType || next.facilityType;
+                next.facilityQty = parsed.quantity || next.facilityQty;
             }
             return next;
         });
         if (parsed.resourceType === 'blood') setSelectedResources({ blood: true, organ: false, facility: false });
         else if (parsed.resourceType === 'organ') setSelectedResources({ blood: false, organ: true, facility: false });
+        else if (parsed.resourceType === 'facility') setSelectedResources({ blood: false, organ: false, facility: true });
         setVoiceTranscript(rawTranscript);
         showToast('Voice captured – fields updated where possible.', 'success');
     };
@@ -312,9 +317,10 @@ const NewRequest = () => {
         setSimLogs(prev => [...prev, `> ${msg}`]);
     };
 
-    const runPhase1 = (map, center) => {
-        log("Scanning 5km local radius...");
-        setSimDistance("5 KM Scan");
+    const runPhase1 = (map, center, radiusKm = 5) => {
+        log(`Scanning ${radiusKm}km local radius...`);
+        setSimDistance(`${radiusKm} KM Scan`);
+        setSimStatus(`Searching within ${radiusKm}km radius...`);
 
         if (coverageCircle.current) map.removeLayer(coverageCircle.current);
 
@@ -322,42 +328,67 @@ const NewRequest = () => {
             color: '#D32F2F',
             fillColor: '#D32F2F',
             fillOpacity: 0.1,
-            radius: 0
+            radius: radiusKm * 1000,
         }).addTo(map);
+        map.fitBounds(coverageCircle.current.getBounds());
 
-        let r = 0;
-        const grow = setInterval(() => {
-            r += 100;
-            if (coverageCircle.current) coverageCircle.current.setRadius(r);
-
-            if (r >= 5000) {
-                clearInterval(grow);
-                log("No immediate matches in 5km zone.");
-                setSimStatus("Waiting for local response...");
-                setTimeout(() => runPhase2(map), 2500);
-            }
-        }, 10);
-    };
-
-    const runPhase2 = (map) => {
-        setSimStatus("Expanding search to 10km grid...");
-        setSimDistance("10 KM Scan");
-        log("Authority override: Expanding radius.");
-
-        let r = 5000;
-        const grow = setInterval(() => {
-            r += 150;
-            if (coverageCircle.current) {
-                coverageCircle.current.setRadius(r);
-                map.fitBounds(coverageCircle.current.getBounds());
-            }
-
-            if (r >= 10000) {
-                clearInterval(grow);
+        setTimeout(() => {
+            log(`Scan complete at ${radiusKm}km.`);
+            if (radiusKm < 10) {
+                setSimStatus('Waiting for local response...');
+            } else {
                 showHospitals(map);
             }
-        }, 20);
+        }, 2000);
     };
+
+    useEffect(() => {
+        if (!createdRequestId || !isSimulating) return;
+
+        joinRequestRoom(createdRequestId);
+        const socket = getSocket();
+
+        const syncRadius = async (radius) => {
+            if (mapInstance.current && formData.location.lat) {
+                const center = [formData.location.lat, formData.location.lng];
+                runPhase1(mapInstance.current, center, radius || 5);
+            }
+        };
+
+        const onRadiusExpanded = (payload) => {
+            if (String(payload.requestId) === String(createdRequestId)) {
+                log(`Radius expanded to ${payload.searchRadius}km`);
+                syncRadius(payload.searchRadius);
+            }
+        };
+
+        const onMatchesUpdated = async (payload) => {
+            if (payload?._id === createdRequestId && payload.potentialMatches?.length > 0) {
+                log(`${payload.potentialMatches.length} hospital(s) notified.`);
+                if (mapInstance.current) showHospitals(mapInstance.current);
+            }
+        };
+
+        socket.on('radius_expanded', onRadiusExpanded);
+        socket.on('matches_updated', onMatchesUpdated);
+
+        const poll = setInterval(async () => {
+            try {
+                const { data } = await requestService.getById(createdRequestId);
+                if (data?.searchRadius) {
+                    setSimDistance(`${data.searchRadius} KM Radius`);
+                }
+            } catch {
+                // ignore
+            }
+        }, 10000);
+
+        return () => {
+            socket.off('radius_expanded', onRadiusExpanded);
+            socket.off('matches_updated', onMatchesUpdated);
+            clearInterval(poll);
+        };
+    }, [createdRequestId, isSimulating]);
 
     const showHospitals = async (map) => {
         log("Broadcasting to nearby facilities...");
@@ -441,11 +472,11 @@ const NewRequest = () => {
     };
 
     return (
-        <div className="container" style={{ padding: '4rem 1rem', maxWidth: '800px' }}>
-            <div className="card animate-fade-in" style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0 }}>Create Emergency Request</h2>
-                    <span className="badge badge-low">Step {step} of 2</span>
+        <div className="chih-page">
+            <div className="chih-panel" style={{ maxWidth: '720px', margin: '0 auto' }}>
+                <div className="chih-panel-header">
+                    <h2>Create Emergency Request</h2>
+                    <span className="chih-panel-tag">Step {step} of 2</span>
                 </div>
 
                 {/* Emergency Assist */}

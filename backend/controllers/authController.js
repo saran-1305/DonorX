@@ -33,7 +33,7 @@ exports.registerHospital = async (req, res) => {
         });
     }
 
-    const { name, email, password, location } = req.body;
+    const { name, email, password, location, contactPhone, contactPerson, address } = req.body;
 
     try {
         const hospitalExists = await Hospital.findOne({ email });
@@ -46,6 +46,9 @@ exports.registerHospital = async (req, res) => {
             name,
             email,
             password,
+            contactPhone: contactPhone || '',
+            contactPerson: contactPerson || name,
+            address: address || '',
             location: {
                 type: 'Point',
                 coordinates: [location.lon, location.lat],
@@ -71,6 +74,9 @@ exports.registerHospital = async (req, res) => {
                 _id: hospital._id,
                 name: hospital.name,
                 email: hospital.email,
+                contactPhone: hospital.contactPhone,
+                contactPerson: hospital.contactPerson,
+                address: hospital.address,
                 location: hospital.location,
                 token: generateToken(hospital._id),
             });
@@ -104,6 +110,9 @@ exports.loginHospital = async (req, res) => {
                 _id: hospital._id,
                 name: hospital.name,
                 email: hospital.email,
+                contactPhone: hospital.contactPhone,
+                contactPerson: hospital.contactPerson,
+                address: hospital.address,
                 location: hospital.location,
                 token: generateToken(hospital._id),
             });

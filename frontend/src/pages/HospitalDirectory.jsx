@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { hospitalService } from '../services/api';
-import { getSocket } from '../services/socket';
+import { hospitalService, consultationService } from '../services/api';
+import { getSocket, joinHospitalRoom } from '../services/socket';
 import { useDonor } from '../context/DonorContext';
 import Modal from '../components/Modal';
 
@@ -23,29 +23,54 @@ const HospitalDirectory = () => {
     const [loading, setLoading] = useState(true);
     const [consultTarget, setConsultTarget] = useState(null);
     const [consultMessage, setConsultMessage] = useState('');
+    const [consultations, setConsultations] = useState([]);
 
     useEffect(() => {
         hospitalService.getNetwork()
             .then(({ data }) => setHospitals(Array.isArray(data) ? data : []))
             .catch((e) => console.error(e))
             .finally(() => setLoading(false));
-    }, []);
+
+        consultationService.getMy()
+            .then(({ data }) => setConsultations(Array.isArray(data) ? data : []))
+            .catch(() => {});
+
+        if (user?._id) joinHospitalRoom(user._id);
+
+        const socket = getSocket();
+        const refresh = () => {
+            consultationService.getMy()
+                .then(({ data }) => setConsultations(Array.isArray(data) ? data : []))
+                .catch(() => {});
+        };
+        socket.on('consultation_incoming', refresh);
+        socket.on('consultation_reply', refresh);
+        return () => {
+            socket.off('consultation_incoming', refresh);
+            socket.off('consultation_reply', refresh);
+        };
+    }, [user]);
 
     const filtered = hospitals.filter((h) =>
         h.name?.toLowerCase().includes(search.toLowerCase())
     );
 
-    const sendConsultation = () => {
+    const sendConsultation = async () => {
         if (!consultTarget || !consultMessage.trim()) return;
-        const socket = getSocket();
-        socket.emit('consultation_request', {
-            fromHospitalId: user._id,
-            toHospitalId: consultTarget._id,
-            message: consultMessage.trim(),
-        });
-        showToast(`Consultation request sent to ${consultTarget.name}`, 'success');
-        setConsultTarget(null);
-        setConsultMessage('');
+        try {
+            await consultationService.create({
+                toHospitalId: consultTarget._id,
+                message: consultMessage.trim(),
+                subject: `Consultation request to ${consultTarget.name}`,
+            });
+            showToast(`Consultation sent to ${consultTarget.name}`, 'success');
+            setConsultTarget(null);
+            setConsultMessage('');
+            const { data } = await consultationService.getMy();
+            setConsultations(Array.isArray(data) ? data : []);
+        } catch (e) {
+            showToast('Failed to send consultation.', 'error');
+        }
     };
 
     if (loading) {
@@ -144,6 +169,31 @@ const HospitalDirectory = () => {
                     })
                 )}
             </div>
+
+            {consultations.length > 0 && (
+                <div style={{ marginTop: '3rem' }}>
+                    <h3 style={{ marginBottom: '1rem' }}>Consultation History</h3>
+                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                        {consultations.slice(0, 10).map((c) => (
+                            <div key={c._id} className="card" style={{ padding: '1rem' }}>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                                    {c.fromHospital?.name} → {c.toHospital?.name} • {new Date(c.createdAt).toLocaleDateString()}
+                                </div>
+                                <p style={{ margin: 0 }}>{c.message}</p>
+                                {c.replies?.length > 0 && (
+                                    <div style={{ marginTop: '0.75rem', paddingLeft: '1rem', borderLeft: '3px solid #4338CA' }}>
+                                        {c.replies.map((r, i) => (
+                                            <p key={i} style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                                Reply: {r.message}
+                                            </p>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <Modal isOpen={!!consultTarget} onClose={() => setConsultTarget(null)} maxWidth="480px">
                 <h3 style={{ margin: '0 0 0.5rem' }}>Consultation Request</h3>

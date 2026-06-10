@@ -40,15 +40,29 @@ exports.calculatePriority = (request) => {
     }
     // If createdAt doesn't exist yet, timeScore is 0 (new request)
 
-    // 4. Resource Rarity (Max 10) - Mock logic
+    // 4. Resource Rarity (Max 10)
     if (request.resourceNeeded && request.resourceNeeded.type) {
         const rareGroups = ['AB-', 'B-', 'O-'];
         if (request.resourceNeeded.type === 'BLOOD' && request.resourceNeeded.group && rareGroups.includes(request.resourceNeeded.group)) {
             score += 10;
         }
         if (request.resourceNeeded.type === 'ORGAN') {
-            score += 10; // Organs are always rare
+            score += 10;
         }
+        const criticalResources = ['VENTILATOR', 'ICU_BED', 'AMBULANCE'];
+        if (criticalResources.includes(request.resourceNeeded.type)) {
+            score += 8;
+        }
+        if (request.resourceNeeded.type === 'OXYGEN_CYLINDER') {
+            score += 5;
+        }
+    }
+
+    // 5. Clinical severity keywords in condition (Max 10)
+    const criticalKeywords = ['cardiac arrest', 'hemorrhage', 'respiratory failure', 'sepsis', 'stroke'];
+    const lowerCondition = condition.toLowerCase();
+    if (criticalKeywords.some((kw) => lowerCondition.includes(kw))) {
+        score += 10;
     }
 
     return Math.min(score, 100);

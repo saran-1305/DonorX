@@ -61,6 +61,28 @@ export const resourceService = {
 
 export const hospitalService = {
     getNetwork: () => api.get('/hospitals/network'),
+    getById: (id) => api.get(`/hospitals/${id}`),
+};
+
+export const chatService = {
+    getConversation: (hospitalId) => api.get(`/chat/${hospitalId}`),
+    sendMessage: (hospitalId, message) => api.post(`/chat/${hospitalId}`, { message }),
+};
+
+export const notificationService = {
+    getAll: () => api.get('/notifications'),
+    markRead: (id) => api.put(`/notifications/${id}/read`),
+    markAllRead: () => api.put('/notifications/read-all'),
+};
+
+export const consultationService = {
+    create: (data) => api.post('/consultations', data),
+    getMy: () => api.get('/consultations/my'),
+    reply: (id, message) => api.post(`/consultations/${id}/reply`, { message }),
+};
+
+export const analyticsService = {
+    getPredictions: () => api.get('/analytics/predictions'),
 };
 
 export const requestService = {
@@ -70,6 +92,7 @@ export const requestService = {
     getIncoming: () => api.get('/requests/incoming'),
     respond: (id, response) => api.post(`/requests/${id}/respond`, { response }),
     updateStatus: (id, status, location) => api.put(`/requests/${id}/status`, { status, location }),
+    getTransport: (id) => api.get(`/requests/${id}/transport`),
 };
 
 export default api;

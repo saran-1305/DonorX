@@ -13,7 +13,7 @@ const Login = () => {
     const location = useLocation();
 
     // Redirect to the page they tried to visit or dashboard
-    const from = location.state?.from?.pathname || '/command-center';
+    const from = location.state?.from?.pathname || '/home';
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -36,9 +36,13 @@ const Login = () => {
     };
 
     return (
-        <div className="page-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
-            <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem' }}>
-                <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--primary-color)' }}>Login to DonorX</h2>
+        <div className="auth-page">
+            <div className="auth-card">
+                <div className="auth-brand">
+                    <span className="logo-accent">Donor</span>X
+                </div>
+                <h2>Sign in to your hospital</h2>
+                <p className="auth-sub">Access the healthcare intelligence network</p>
 
                 {error && <div className="alert alert-error" style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: 'var(--radius-sm)' }}>{error}</div>}
 

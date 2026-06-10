@@ -1,28 +1,27 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import Layout from './layouts/Layout';
+import AuthLayout from './layouts/AuthLayout';
+import AppLayout from './layouts/AppLayout';
 import Home from './pages/Home';
-import Dashboard from './pages/Dashboard';
-import HospitalDashboard from './pages/HospitalDashboard';
+import Inventory from './pages/Inventory';
+import Social from './pages/Social';
 import NewRequest from './pages/NewRequest';
 import Tracking from './pages/Tracking';
-import Audit from './pages/Audit';
+import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Profile from './pages/Profile';
-import CommandCenter from './pages/CommandCenter';
-import HospitalDirectory from './pages/HospitalDirectory';
 import { DonorProvider, useDonor } from './context/DonorContext';
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useDonor();
     const location = useLocation();
-
-    if (!user) {
-        return <Navigate to="/login" state={{ from: location }} replace />;
-    }
-
+    if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
     return children;
+};
+
+const RootRedirect = () => {
+    const { user } = useDonor();
+    return <Navigate to={user ? '/home' : '/login'} replace />;
 };
 
 function App() {
@@ -30,53 +29,32 @@ function App() {
         <DonorProvider>
             <Router>
                 <Routes>
-                    <Route path="/" element={<Layout />}>
-                        <Route index element={<Home />} />
+                    <Route path="/" element={<RootRedirect />} />
+
+                    <Route element={<AuthLayout />}>
                         <Route path="login" element={<Login />} />
                         <Route path="register" element={<Register />} />
-
-                        {/* Protected Routes */}
-                        <Route path="command-center" element={
-                            <ProtectedRoute>
-                                <CommandCenter />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="dashboard" element={
-                            <ProtectedRoute>
-                                <Dashboard />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="directory" element={
-                            <ProtectedRoute>
-                                <HospitalDirectory />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="hospital-dashboard" element={
-                            <ProtectedRoute>
-                                <HospitalDashboard />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="request" element={
-                            <ProtectedRoute>
-                                <NewRequest />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="tracking" element={
-                            <ProtectedRoute>
-                                <Tracking />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="audit" element={
-                            <ProtectedRoute>
-                                <Audit />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="profile" element={
-                            <ProtectedRoute>
-                                <Profile />
-                            </ProtectedRoute>
-                        } />
                     </Route>
+
+                    <Route element={
+                        <ProtectedRoute>
+                            <AppLayout />
+                        </ProtectedRoute>
+                    }>
+                        <Route path="home" element={<Home />} />
+                        <Route path="request" element={<NewRequest />} />
+                        <Route path="inventory" element={<Inventory />} />
+                        <Route path="social" element={<Social />} />
+                        <Route path="tracking" element={<Tracking />} />
+                        <Route path="dashboard" element={<Dashboard />} />
+                        {/* Legacy redirects */}
+                        <Route path="command-center" element={<Navigate to="/home" replace />} />
+                        <Route path="analytics" element={<Navigate to="/home" replace />} />
+                        <Route path="directory" element={<Navigate to="/social" replace />} />
+                        <Route path="hospital-dashboard" element={<Navigate to="/inventory" replace />} />
+                    </Route>
+
+                    <Route path="*" element={<RootRedirect />} />
                 </Routes>
             </Router>
         </DonorProvider>

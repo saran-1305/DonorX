@@ -8,8 +8,9 @@ const Register = () => {
         email: '',
         password: '',
         hospitalName: '',
-        role: 'Coordinator',
-        location: { lat: '', lng: '' }
+        contactPhone: '',
+        address: '',
+        location: { lat: '', lng: '' },
     });
     const [error, setError] = useState('');
     const { register, showToast } = useDonor();
@@ -58,10 +59,12 @@ const Register = () => {
         }
 
         const result = await register({
-            // Backend hospital \"name\" represents the hospital entity
             name: formData.hospitalName,
             email: formData.email,
             password: formData.password,
+            contactPerson: formData.name,
+            contactPhone: formData.contactPhone,
+            address: formData.address,
             location: {
                 lat: formData.location.lat,
                 lon: formData.location.lng
@@ -69,17 +72,18 @@ const Register = () => {
         });
 
         if (result.success) {
-            showToast('Registration successful! Please login.', 'success');
-            navigate('/login');
+            navigate('/home', { replace: true });
         } else {
             setError(result.message);
         }
     };
 
     return (
-        <div className="page-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', padding: '2rem 0' }}>
-            <div className="card" style={{ maxWidth: '500px', width: '100%', padding: '2rem' }}>
-                <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--primary-color)' }}>Register Hospital Account</h2>
+        <div className="auth-page">
+            <div className="auth-card auth-card-wide">
+                <div className="auth-brand"><span className="logo-accent">Donor</span>X</div>
+                <h2>Register your hospital</h2>
+                <p className="auth-sub">Join the DonorX network</p>
 
                 {error && <div className="alert alert-error" style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: 'var(--radius-sm)' }}>{error}</div>}
 
@@ -139,6 +143,20 @@ const Register = () => {
                             required
                             style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}
                         />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                        <label htmlFor="contactPhone" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Contact Phone</label>
+                        <input type="tel" id="contactPhone" name="contactPhone" value={formData.contactPhone} onChange={handleChange}
+                            className="form-control" placeholder="+91 ..."
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }} />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                        <label htmlFor="address" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Hospital Address</label>
+                        <input type="text" id="address" name="address" value={formData.address} onChange={handleChange}
+                            className="form-control" placeholder="Street, City"
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }} />
                     </div>
 
                     <div className="form-group" style={{ marginBottom: '1.5rem' }}>

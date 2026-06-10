@@ -1,14 +1,9 @@
 import React from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
+import NotificationBell from './NotificationBell';
 
-const navLinkStyle = ({ isActive }) => ({
-    textDecoration: 'none',
-    color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
-    fontWeight: isActive ? 600 : 400,
-    borderBottom: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
-    paddingBottom: '2px',
-});
+const navLinkClass = ({ isActive }) => `nav-pill ${isActive ? 'nav-pill-active' : ''}`;
 
 const Header = () => {
     const { user, logout } = useDonor();
@@ -20,55 +15,26 @@ const Header = () => {
     };
 
     return (
-        <header className="main-header">
-            <div className="container flex justify-between items-center" style={{ height: '100%' }}>
-                <Link to="/" className="logo">
-                    <span style={{ color: 'var(--primary-color)' }}>Donor</span>
-                    <span style={{ color: 'var(--text-primary)' }}>X</span>
-                </Link>
-                <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
-                    <NavLink to="/" style={navLinkStyle} end>Home</NavLink>
+        <header className="app-header">
+            <div className="container app-header-inner">
+                <NavLink to="/home" className="logo">
+                    <span className="logo-accent">Donor</span>X
+                </NavLink>
 
-                    {user && (
-                        <>
-                            <NavLink to="/command-center" style={navLinkStyle}>Command Center</NavLink>
-                            <NavLink to="/request" style={navLinkStyle}>New Request</NavLink>
-                            <NavLink to="/dashboard" style={navLinkStyle}>Dashboard</NavLink>
-                            <NavLink to="/hospital-dashboard" style={navLinkStyle}>Hospital Dashboard</NavLink>
-                            <NavLink to="/directory" style={navLinkStyle}>Directory</NavLink>
-                            <NavLink to="/audit" style={navLinkStyle}>Audit</NavLink>
-                            <NavLink to="/profile" style={navLinkStyle}>Profile</NavLink>
-                        </>
-                    )}
+                <nav className="app-nav">
+                    <NavLink to="/home" className={navLinkClass} end>Home</NavLink>
+                    <NavLink to="/request" className={navLinkClass}>Request</NavLink>
+                    <NavLink to="/inventory" className={navLinkClass}>Inventory</NavLink>
+                    <NavLink to="/social" className={navLinkClass}>Social</NavLink>
                 </nav>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    {user ? (
-                        <>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
-                                <div style={{
-                                    width: '32px', height: '32px', borderRadius: '50%',
-                                    backgroundColor: 'var(--primary-color)', color: 'white',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem',
-                                }}>
-                                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                                </div>
-                                <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{user.name || user.email}</span>
-                            </div>
-                            <button onClick={handleLogout} className="btn" style={{ padding: '0.5rem 1rem', border: '1px solid var(--border-color)' }}>
-                                Logout
-                            </button>
-                        </>
-                    ) : (
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <Link to="/login" className="btn" style={{ padding: '0.5rem 1rem', border: '1px solid var(--border-color)' }}>
-                                Login
-                            </Link>
-                            <Link to="/register" className="btn btn-primary" style={{ padding: '0.5rem 1rem', color: 'white' }}>
-                                Register
-                            </Link>
-                        </div>
-                    )}
+                <div className="app-header-actions">
+                    <NotificationBell />
+                    <div className="user-chip">
+                        <div className="user-avatar">{user?.name?.charAt(0)?.toUpperCase() || 'H'}</div>
+                        <span>{user?.name}</span>
+                    </div>
+                    <button className="btn btn-ghost" onClick={handleLogout}>Logout</button>
                 </div>
             </div>
         </header>

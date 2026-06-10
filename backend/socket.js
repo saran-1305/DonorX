@@ -17,6 +17,12 @@ const initIO = (httpServer) => {
             }
         });
 
+        socket.on('join_request', (requestId) => {
+            if (requestId) {
+                socket.join(`request_${requestId}`);
+            }
+        });
+
         socket.on('consultation_request', ({ fromHospitalId, toHospitalId, message }) => {
             if (toHospitalId) {
                 io.to(String(toHospitalId)).emit('consultation_incoming', {

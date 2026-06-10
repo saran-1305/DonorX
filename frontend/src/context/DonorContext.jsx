@@ -25,8 +25,6 @@ export const DonorProvider = ({ children }) => {
                 localStorage.removeItem('donorx_user');
             }
         }
-
-        startSimulation();
     }, []);
 
     const getRegisteredUsers = () => {
@@ -143,27 +141,6 @@ export const DonorProvider = ({ children }) => {
 
     const removeToast = (id) => {
         setToasts(prev => prev.filter(t => t.id !== id));
-    };
-
-    const startSimulation = () => {
-        if (window.simulationStarted) return;
-        window.simulationStarted = true;
-
-        const messages = [
-            { msg: "New kidney match found in MIOT Hospital, Manapakkam", type: "success" },
-            { msg: "High urgency request incoming: O- Blood (Velachery)", type: "warning" },
-            { msg: "Transport logistics updated for REQ-1002 (Anna Nagar)", type: "default" },
-            { msg: "System health check: Chennai Zone Optimal", type: "default" },
-            { msg: "Donor database synchronized with TN Organ Registry", type: "default" }
-        ];
-
-        // Random check every 15 seconds
-        setInterval(() => {
-            if (Math.random() > 0.6) {
-                const item = messages[Math.floor(Math.random() * messages.length)];
-                showToast(item.msg, item.type);
-            }
-        }, 8000);
     };
 
     const formatDate = (isoString) => {

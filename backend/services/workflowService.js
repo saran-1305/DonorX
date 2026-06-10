@@ -2,12 +2,19 @@ const EmergencyRequest = require('../models/EmergencyRequest');
 const Hospital = require('../models/Hospital');
 const { findMatchingHospitals } = require('./matchingService');
 const { createAuditLog } = require('./auditService');
+const { createNotification } = require('./notificationService');
 const { getIO } = require('../socket');
+const { startTransport } = require('./transportService');
+
+const ioEmitRequestRoom = (requestId, event, payload) => {
+    const io = getIO();
+    if (!io) return;
+    io.to(`request_${requestId}`).emit(event, payload);
+};
 
 const emitToHospital = async (hospitalId, event, payload) => {
     const io = getIO();
     if (!io) return;
-
     io.to(String(hospitalId)).emit(event, payload);
 };
 
@@ -21,6 +28,13 @@ const emitRequestToMatches = async (requestId) => {
     for (const hospital of fullRequest.potentialMatches) {
         const hospitalId = hospital._id || hospital;
         await emitToHospital(hospitalId, 'new_request', fullRequest);
+        await createNotification(hospitalId, {
+            type: 'EMERGENCY',
+            title: 'Emergency request incoming',
+            message: `${fullRequest.patientName} — ${fullRequest.urgency} urgency. Priority ${fullRequest.priorityScore}/100`,
+            link: '/tracking',
+            metadata: { requestId: fullRequest._id },
+        });
     }
 };
 
@@ -42,6 +56,11 @@ exports.processRequestMatching = async (requestId) => {
             await createAuditLog(requestId, 'MATCHES_FOUND', { count: matches.length, hospitals: matches });
 
             await emitRequestToMatches(requestId);
+
+            const fullRequest = await EmergencyRequest.findById(requestId)
+                .populate('potentialMatches', 'name location');
+            await emitToHospital(request.requestingHospital, 'matches_updated', fullRequest);
+            ioEmitRequestRoom(requestId, 'matches_updated', fullRequest);
         } else {
             await createAuditLog(requestId, 'NO_MATCHES_FOUND', { radius: request.searchRadius || 5 });
         }
@@ -59,7 +78,37 @@ exports.expandSearchRadius = async (requestId) => {
 
     await createAuditLog(requestId, 'RADIUS_EXPANDED', { newRadius: request.searchRadius });
 
+    await emitToHospital(request.requestingHospital, 'radius_expanded', {
+        requestId,
+        searchRadius: request.searchRadius,
+    });
+    ioEmitRequestRoom(requestId, 'radius_expanded', {
+        requestId,
+        searchRadius: request.searchRadius,
+    });
+
     await exports.processRequestMatching(requestId);
+
+    const updated = await EmergencyRequest.findById(requestId)
+        .populate('potentialMatches', 'name location');
+    await emitToHospital(request.requestingHospital, 'matches_updated', updated);
+    ioEmitRequestRoom(requestId, 'matches_updated', updated);
+};
+
+exports.handleDenial = async (requestId, hospitalId) => {
+    const request = await EmergencyRequest.findById(requestId);
+    if (!request) throw new Error('Request not found');
+
+    request.potentialMatches = request.potentialMatches.filter(
+        (m) => m.toString() !== hospitalId.toString()
+    );
+    await request.save();
+
+    await createAuditLog(requestId, 'REQUEST_DENIED', { hospitalId });
+
+    if (request.potentialMatches.length === 0) {
+        await exports.processRequestMatching(requestId);
+    }
 };
 
 exports.handleAcceptance = async (requestId, hospitalId) => {
@@ -113,6 +162,20 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         .populate('requestingHospital', 'name location');
 
     await emitToHospital(request.requestingHospital, 'request_accepted', updatedRequest);
+
+    await createNotification(request.requestingHospital, {
+        type: 'ACCEPTED',
+        title: 'Request accepted',
+        message: `${hospital.name} accepted your emergency request`,
+        link: '/tracking',
+        metadata: { requestId, hospitalId },
+    });
+
+    try {
+        await startTransport(requestId);
+    } catch (transportErr) {
+        console.error('Transport start error (non-critical):', transportErr.message);
+    }
 };
 
 exports.updateLifecycle = async (requestId, status, locationData) => {

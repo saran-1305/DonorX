@@ -44,10 +44,22 @@ const HospitalSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    email: { // Added for login
+    email: {
         type: String,
         required: true,
-        unique: true
+        unique: true,
+    },
+    contactPhone: {
+        type: String,
+        default: '',
+    },
+    contactPerson: {
+        type: String,
+        default: '',
+    },
+    address: {
+        type: String,
+        default: '',
     },
     password: {
         type: String,

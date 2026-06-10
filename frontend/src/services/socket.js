@@ -17,6 +17,12 @@ export const joinHospitalRoom = (hospitalId) => {
     return s;
 };
 
+export const joinRequestRoom = (requestId) => {
+    const s = getSocket();
+    s.emit('join_request', String(requestId));
+    return s;
+};
+
 export const disconnectSocket = () => {
     if (socket) {
         socket.disconnect();

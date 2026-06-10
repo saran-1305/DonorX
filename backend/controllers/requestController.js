@@ -4,9 +4,11 @@ const { createAuditLog } = require('../services/auditService');
 const {
     processRequestMatching,
     handleAcceptance,
+    handleDenial,
     updateLifecycle,
     notifyMatchedHospitals,
 } = require('../services/workflowService');
+const { getTransportByRequest, completeTransport, cancelTransport } = require('../services/transportService');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const generateAISummary = async (request) => {
@@ -290,9 +292,7 @@ exports.respondToRequest = async (req, res) => {
                 request: updatedRequest
             });
         } else {
-            // Deny logic: Remove from potentialMatches
-            // For MVP simplicity, just log it. Real app would remove visibility.
-            await createAuditLog(requestId, 'REQUEST_DENIED', { hospitalId: req.user._id });
+            await handleDenial(requestId, req.user._id);
             res.json({ message: 'Request denied' });
         }
     } catch (error) {
@@ -310,8 +310,25 @@ exports.updateRequestStatus = async (req, res) => {
 
     try {
         await updateLifecycle(requestId, status, location);
+        if (status === 'Completed') {
+            await completeTransport(requestId);
+        } else if (status === 'Ended') {
+            await cancelTransport(requestId);
+        }
         res.json({ message: `Request status updated to ${status}` });
     } catch (error) {
         res.status(400).json({ message: error.message });
+    }
+};
+
+exports.getTransport = async (req, res) => {
+    try {
+        const tracking = await getTransportByRequest(req.params.id);
+        if (!tracking) {
+            return res.status(404).json({ message: 'No transport tracking for this request' });
+        }
+        res.json(tracking);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 };
