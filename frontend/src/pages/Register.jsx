@@ -163,11 +163,11 @@ const Register = () => {
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Hospital Location *</label>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                             <button type="button" onClick={getLocation} className="btn btn-outline" style={{ flex: 1, padding: '0.6rem' }}>
-                                📍 Get Current Location
+                                Get Current Location
                             </button>
                             {formData.location.lat && (
                                 <span style={{ fontSize: '0.9rem', color: 'green' }}>
-                                    ✓ {formData.location.lat.toFixed(4)}, {formData.location.lng.toFixed(4)}
+                                    {formData.location.lat.toFixed(4)}, {formData.location.lng.toFixed(4)}
                                 </span>
                             )}
                         </div>

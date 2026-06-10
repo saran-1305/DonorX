@@ -148,7 +148,7 @@ const Audit = () => {
                                 fontSize: '0.875rem',
                             }}
                         >
-                            {chainVerified ? '✓ Verified chain' : '✗ Chain integrity broken'}
+                            {chainVerified ? 'Verified chain' : 'Chain integrity broken'}
                         </span>
                     </div>
                 )}

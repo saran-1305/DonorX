@@ -4,13 +4,13 @@ import { notificationService } from '../services/api';
 import { getSocket } from '../services/socket';
 import { useDonor } from '../context/DonorContext';
 
-const TYPE_ICONS = {
-    EMERGENCY: '🚨',
-    ACCEPTED: '✅',
-    CHAT: '💬',
-    CONSULTATION: '🏥',
-    TRANSPORT: '🚑',
-    SYSTEM: 'ℹ️',
+const TYPE_LABELS = {
+    EMERGENCY: 'EMG',
+    ACCEPTED: 'ACC',
+    CHAT: 'MSG',
+    CONSULTATION: 'CON',
+    TRANSPORT: 'TRN',
+    SYSTEM: 'SYS',
 };
 
 const NotificationBell = () => {
@@ -102,7 +102,7 @@ const NotificationBell = () => {
                                     className={`notification-item ${n.read ? '' : 'notification-unread'}`}
                                     onClick={() => handleClick(n)}
                                 >
-                                    <span className="notification-icon">{TYPE_ICONS[n.type] || 'ℹ️'}</span>
+                                    <span className="notification-icon">{TYPE_LABELS[n.type] || 'SYS'}</span>
                                     <div className="notification-content">
                                         <strong>{n.title}</strong>
                                         <p>{n.message}</p>

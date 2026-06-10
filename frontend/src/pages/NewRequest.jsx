@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { createLeafletMap, destroyLeafletMap } from '../utils/leafletMap';
 import { useVoiceRequest } from '../hooks/useVoiceRequest';
 
 const NewRequest = () => {
@@ -285,14 +286,12 @@ const NewRequest = () => {
 
     const initMap = () => {
         if (!mapContainer.current) return;
-        if (mapInstance.current) {
-            mapInstance.current.remove();
-        }
+        destroyLeafletMap(mapInstance, mapContainer);
 
-        // Use Actual coords if available, else Chennai default
         const CENTER = formData.location.lat ? [formData.location.lat, formData.location.lng] : [13.0418, 80.2341];
 
-        const map = L.map(mapContainer.current).setView(CENTER, 13);
+        const map = createLeafletMap(mapContainer.current);
+        map.setView(CENTER, 13);
         mapInstance.current = map;
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -444,7 +443,7 @@ const NewRequest = () => {
             showToast('Request Live: Tracking Started', 'success');
 
             setTimeout(() => {
-                navigate('/tracking');
+                navigate('/home');
             }, 1000);
         }, 3000);
     };
@@ -562,7 +561,7 @@ const NewRequest = () => {
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                                 <div>
-                                    <strong>🤖 AI Clinical Support</strong>
+                                    <strong>AI Clinical Support</strong>
                                     <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#6B7280' }}>
                                         AI suggestion only — doctor must verify
                                     </p>
@@ -786,7 +785,7 @@ const NewRequest = () => {
                                         style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', flex: 1, background: '#f3f4f6' }}
                                     />
                                     <button type="button" onClick={getLocation} className="btn btn-outline" style={{ padding: '0.75rem' }}>
-                                        📍 Get Location
+                                        Get Location
                                     </button>
                                 </div>
                             </div>

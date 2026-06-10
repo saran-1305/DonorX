@@ -6,7 +6,8 @@ import Home from './pages/Home';
 import Inventory from './pages/Inventory';
 import Social from './pages/Social';
 import NewRequest from './pages/NewRequest';
-import Tracking from './pages/Tracking';
+import MapPage from './pages/Map';
+import Messages from './pages/Messages';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -45,7 +46,9 @@ function App() {
                         <Route path="request" element={<NewRequest />} />
                         <Route path="inventory" element={<Inventory />} />
                         <Route path="social" element={<Social />} />
-                        <Route path="tracking" element={<Tracking />} />
+                        <Route path="messages" element={<Messages />} />
+                        <Route path="map" element={<MapPage />} />
+                        <Route path="tracking" element={<Navigate to="/map" replace />} />
                         <Route path="dashboard" element={<Dashboard />} />
                         {/* Legacy redirects */}
                         <Route path="command-center" element={<Navigate to="/home" replace />} />

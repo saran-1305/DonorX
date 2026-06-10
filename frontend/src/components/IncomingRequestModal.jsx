@@ -121,7 +121,7 @@ const IncomingRequestModal = () => {
             setRequest(null);
             setTimeLeft(180);
             if (status === 'Accept') {
-                setTimeout(() => navigate('/tracking'), 1000);
+                setTimeout(() => navigate('/home'), 1000);
             }
         } catch (error) {
             const errorMessage = error.response?.data?.message || error.message || 'Failed to respond';

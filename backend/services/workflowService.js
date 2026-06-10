@@ -32,7 +32,7 @@ const emitRequestToMatches = async (requestId) => {
             type: 'EMERGENCY',
             title: 'Emergency request incoming',
             message: `${fullRequest.patientName} — ${fullRequest.urgency} urgency. Priority ${fullRequest.priorityScore}/100`,
-            link: '/tracking',
+            link: '/home',
             metadata: { requestId: fullRequest._id },
         });
     }
@@ -167,7 +167,7 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         type: 'ACCEPTED',
         title: 'Request accepted',
         message: `${hospital.name} accepted your emergency request`,
-        link: '/tracking',
+        link: '/home',
         metadata: { requestId, hospitalId },
     });
 

@@ -1,21 +1,22 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { inventoryService, resourceService } from '../services/api';
 import { useDonor } from '../context/DonorContext';
 
 const BLOOD_GROUPS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
 const BLOOD_GOALS = { 'O+': 25, 'O-': 15, 'A+': 20, 'A-': 15, 'B+': 18, 'B-': 12, 'AB+': 10, 'AB-': 8 };
-const ORGANS = [
-    { key: 'Kidney', icon: '🫘', label: 'Kidney' },
-    { key: 'Heart', icon: '❤️', label: 'Heart' },
-    { key: 'Liver', icon: '🫀', label: 'Liver' },
-    { key: 'Lungs', icon: '🫁', label: 'Lungs' },
-];
-const RESOURCE_META = {
-    ICU_BED: { label: 'ICU Beds', icon: '🛏️' },
-    VENTILATOR: { label: 'Ventilators', icon: '💨' },
-    OXYGEN_CYLINDER: { label: 'Oxygen Cylinders', icon: '🫁' },
-    AMBULANCE: { label: 'Ambulances', icon: '🚑' },
+const ORGANS = ['Kidney', 'Heart', 'Liver', 'Lungs'];
+const RESOURCE_LABELS = {
+    ICU_BED: 'ICU Beds',
+    VENTILATOR: 'Ventilators',
+    OXYGEN_CYLINDER: 'Oxygen Cylinders',
+    AMBULANCE: 'Ambulances',
+};
+
+const TAB_TITLES = {
+    blood: { title: 'Blood Bank', tag: '8 Types' },
+    organ: { title: 'Organ Bank', tag: '4 Types' },
+    resource: { title: 'Resource Hub', tag: 'Facility Resources' },
 };
 
 const Stepper = ({ value, onChange, min = 0 }) => (
@@ -30,9 +31,6 @@ const Inventory = () => {
     const { showToast } = useDonor();
     const [searchParams] = useSearchParams();
     const tab = searchParams.get('tab') || 'blood';
-    const bloodRef = useRef(null);
-    const organRef = useRef(null);
-    const resourceRef = useRef(null);
 
     const [inventory, setInventory] = useState([]);
     const [resources, setResources] = useState([]);
@@ -66,11 +64,6 @@ const Inventory = () => {
 
     useEffect(() => { load(); }, [load]);
 
-    useEffect(() => {
-        const ref = tab === 'organ' ? organRef : tab === 'resource' ? resourceRef : bloodRef;
-        ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, [tab]);
-
     const saveBlood = async (group) => {
         try {
             await inventoryService.updateInventory({
@@ -97,6 +90,7 @@ const Inventory = () => {
     };
 
     const organItems = inventory.filter((i) => i.type === 'ORGAN');
+    const sectionMeta = TAB_TITLES[tab] || TAB_TITLES.blood;
 
     if (loading) {
         return <div className="chih-loading"><div className="chih-spinner" /> Loading inventory...</div>;
@@ -104,12 +98,11 @@ const Inventory = () => {
 
     return (
         <div className="chih-page">
-            <div className="chih-inventory-grid">
-                {/* Blood Bank */}
-                <section ref={bloodRef} className="chih-panel chih-panel-blood">
+            {tab === 'blood' && (
+                <section className="chih-panel chih-panel-single">
                     <div className="chih-panel-header">
-                        <h2>Blood Bank</h2>
-                        <span className="chih-panel-tag">8 Types</span>
+                        <h2>{sectionMeta.title}</h2>
+                        <span className="chih-panel-tag">{sectionMeta.tag}</span>
                     </div>
                     <table className="chih-table">
                         <thead>
@@ -155,23 +148,25 @@ const Inventory = () => {
                         </tbody>
                     </table>
                 </section>
+            )}
 
-                {/* Organ Bank */}
-                <section ref={organRef} className="chih-panel chih-panel-organ">
+            {tab === 'organ' && (
+                <section className="chih-panel chih-panel-single">
                     <div className="chih-panel-header">
-                        <h2>Organ Bank</h2>
+                        <h2>{sectionMeta.title}</h2>
+                        <span className="chih-panel-tag">{sectionMeta.tag}</span>
                     </div>
-                    <div className="chih-organ-grid">
-                        {ORGANS.map(({ key, icon, label }) => {
-                            const qty = organItems.find((i) => i.group === key)?.quantity || 0;
+                    <div className="chih-organ-grid chih-organ-grid-wide">
+                        {ORGANS.map((organ) => {
+                            const qty = organItems.find((i) => i.group === organ)?.quantity || 0;
                             const available = qty > 0;
                             return (
-                                <div key={key} className={`chih-organ-card ${available ? '' : 'chih-organ-empty'}`}>
-                                    <div className="chih-organ-icon">{icon}</div>
-                                    <h3>{label}</h3>
+                                <div key={organ} className={`chih-organ-card ${available ? '' : 'chih-organ-empty'}`}>
+                                    <div className="chih-organ-abbr">{organ.slice(0, 2).toUpperCase()}</div>
+                                    <h3>{organ}</h3>
                                     <div className="chih-organ-qty">{qty}</div>
                                     {available ? (
-                                        <span className="chih-organ-badge chih-organ-badge-ok">✓ {qty} Available</span>
+                                        <span className="chih-organ-badge chih-organ-badge-ok">{qty} Available</span>
                                     ) : (
                                         <span className="chih-organ-badge chih-organ-badge-out">OUT OF STOCK</span>
                                     )}
@@ -180,11 +175,13 @@ const Inventory = () => {
                         })}
                     </div>
                 </section>
+            )}
 
-                {/* Resource Hub */}
-                <section ref={resourceRef} className="chih-panel chih-panel-resource">
+            {tab === 'resource' && (
+                <section className="chih-panel chih-panel-single">
                     <div className="chih-panel-header">
-                        <h2>Resource Hub</h2>
+                        <h2>{sectionMeta.title}</h2>
+                        <span className="chih-panel-tag">{sectionMeta.tag}</span>
                     </div>
                     <table className="chih-table chih-table-resource">
                         <thead>
@@ -196,38 +193,30 @@ const Inventory = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {resources.map((r) => {
-                                const meta = RESOURCE_META[r.resourceType] || { label: r.resourceType, icon: '📦' };
-                                return (
-                                    <tr key={r.resourceType}>
-                                        <td>
-                                            <div className="chih-resource-name">
-                                                <span>{meta.icon}</span>
-                                                {meta.label}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <strong>{resourceEdits[r.resourceType] ?? r.available}</strong>
-                                            <span className="chih-muted"> / {r.total} available</span>
-                                        </td>
-                                        <td>
-                                            <Stepper
-                                                value={resourceEdits[r.resourceType] ?? r.available}
-                                                onChange={(v) => setResourceEdits((p) => ({ ...p, [r.resourceType]: v }))}
-                                            />
-                                        </td>
-                                        <td>
-                                            <button type="button" className="chih-link-btn" onClick={() => saveResource(r.resourceType)}>
-                                                Adjust
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {resources.map((r) => (
+                                <tr key={r.resourceType}>
+                                    <td><span className="chih-resource-name">{RESOURCE_LABELS[r.resourceType] || r.resourceType.replace(/_/g, ' ')}</span></td>
+                                    <td>
+                                        <strong>{resourceEdits[r.resourceType] ?? r.available}</strong>
+                                        <span className="chih-muted"> / {r.total} available</span>
+                                    </td>
+                                    <td>
+                                        <Stepper
+                                            value={resourceEdits[r.resourceType] ?? r.available}
+                                            onChange={(v) => setResourceEdits((p) => ({ ...p, [r.resourceType]: v }))}
+                                        />
+                                    </td>
+                                    <td>
+                                        <button type="button" className="chih-link-btn" onClick={() => saveResource(r.resourceType)}>
+                                            Adjust
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </section>
-            </div>
+            )}
         </div>
     );
 };

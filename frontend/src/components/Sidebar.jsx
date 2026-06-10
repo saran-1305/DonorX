@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
-import { notificationService } from '../services/api';
+import { notificationService, chatService } from '../services/api';
 import { getSocket } from '../services/socket';
 
 const IconDashboard = () => (
@@ -36,9 +36,15 @@ const IconSocial = () => (
         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
 );
-const IconTrack = () => (
+const IconMap = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="10" r="3" /><path d="M12 21a7 7 0 0 0 7-7c0-2-1-3.5-3-5l-4-4-4 4c-2 1.5-3 3-3 5a7 7 0 0 0 7 7z" />
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+        <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
+    </svg>
+);
+const IconMessages = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
 );
 const IconAlert = () => (
@@ -88,18 +94,32 @@ const Sidebar = () => {
     const { user, logout } = useDonor();
     const navigate = useNavigate();
     const [unread, setUnread] = useState(0);
+    const [msgUnread, setMsgUnread] = useState(0);
 
     useEffect(() => {
         if (!user) return;
-        notificationService.getAll()
+        const refreshAlerts = () => notificationService.getAll()
             .then(({ data }) => setUnread(data.unreadCount || 0))
             .catch(() => {});
+        const refreshMessages = () => chatService.getUnreadCount()
+            .then(({ data }) => setMsgUnread(data.count || 0))
+            .catch(() => {});
+
+        refreshAlerts();
+        refreshMessages();
+
         const socket = getSocket();
-        const refresh = () => notificationService.getAll()
-            .then(({ data }) => setUnread(data.unreadCount || 0))
-            .catch(() => {});
-        socket.on('notification', refresh);
-        return () => socket.off('notification', refresh);
+        const onChatMsg = (msg) => {
+            if (String(msg.toHospital?._id || msg.toHospital) === String(user._id)) {
+                refreshMessages();
+            }
+        };
+        socket.on('notification', refreshAlerts);
+        socket.on('chat_message', onChatMsg);
+        return () => {
+            socket.off('notification', refreshAlerts);
+            socket.off('chat_message', onChatMsg);
+        };
     }, [user]);
 
     const handleLogout = () => {
@@ -125,11 +145,12 @@ const Sidebar = () => {
                 <div className="sidebar-section-label">MAIN NAVIGATION</div>
                 <NavItem to="/home" icon={<IconDashboard />} label="Dashboard" end />
                 <NavItem to="/request" icon={<IconRequest />} label="New Request" />
-                <NavItem to="/inventory" icon={<IconBlood />} label="Blood Bank" matchTab={null} />
+                <NavItem to="/inventory?tab=blood" icon={<IconBlood />} label="Blood Bank" matchTab="blood" />
                 <NavItem to="/inventory?tab=organ" icon={<IconOrgan />} label="Organ Bank" matchTab="organ" />
                 <NavItem to="/inventory?tab=resource" icon={<IconResource />} label="Resource Hub" matchTab="resource" />
                 <NavItem to="/social" icon={<IconSocial />} label="Hospital Network" />
-                <NavItem to="/tracking" icon={<IconTrack />} label="Live Tracking" />
+                <NavItem to="/messages" icon={<IconMessages />} label="Messages" badge={msgUnread} />
+                <NavItem to="/map" icon={<IconMap />} label="Map" />
 
                 <div className="sidebar-section-label">SYSTEM</div>
                 <NavItem to="/home" icon={<IconAlert />} label="Alerts" badge={unread} end />

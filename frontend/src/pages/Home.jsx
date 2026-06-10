@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { statsService, analyticsService, hospitalService } from '../services/api';
 import { getSocket } from '../services/socket';
+import { createLeafletMap, destroyLeafletMap } from '../utils/leafletMap';
 
 const URGENCY_COLORS = { Critical: '#DC2626', High: '#F97316', Medium: '#F59E0B', Low: '#10B981' };
 const RESOURCE_LABELS = { ICU_BED: 'ICU Bed', VENTILATOR: 'Ventilator', OXYGEN_CYLINDER: 'Oxygen', AMBULANCE: 'Ambulance' };
@@ -16,6 +17,7 @@ const Home = () => {
     const [hospitals, setHospitals] = useState([]);
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
+    const markersLayer = useRef(null);
 
     const fetchAll = useCallback(async () => {
         try {
@@ -46,17 +48,48 @@ const Home = () => {
     }, [fetchAll]);
 
     useEffect(() => {
-        if (!mapRef.current || hospitals.length === 0) return;
-        if (mapInstance.current) mapInstance.current.remove();
-        const map = L.map(mapRef.current).setView([13.0827, 80.2707], 11);
+        const container = mapRef.current;
+        if (!container || mapInstance.current) return;
+
+        const map = createLeafletMap(container);
         mapInstance.current = map;
+        map.setView([13.0827, 80.2707], 11);
+
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+        markersLayer.current = L.layerGroup().addTo(map);
+
+        return () => {
+            markersLayer.current = null;
+            destroyLeafletMap(mapInstance, mapRef);
+        };
+    }, []);
+
+    useEffect(() => {
+        const map = mapInstance.current;
+        const layer = markersLayer.current;
+        if (!map || !layer) return;
+
+        layer.clearLayers();
+
+        const points = [];
         hospitals.forEach((h) => {
             const coords = h.location?.coordinates;
             if (!coords?.length) return;
-            L.circleMarker([coords[1], coords[0]], { radius: 7, color: '#3B82F6', fillColor: '#3B82F6', fillOpacity: 0.8 }).addTo(map).bindPopup(h.name);
+            const latLng = [coords[1], coords[0]];
+            points.push(latLng);
+            L.circleMarker(latLng, {
+                radius: 7,
+                color: '#3B82F6',
+                fillColor: '#3B82F6',
+                fillOpacity: 0.8,
+            }).addTo(layer).bindPopup(h.name);
         });
-        return () => { if (mapInstance.current) mapInstance.current.remove(); };
+
+        if (points.length > 0) {
+            map.fitBounds(L.latLngBounds(points), { padding: [30, 30] });
+        } else {
+            map.setView([13.0827, 80.2707], 11);
+        }
     }, [hospitals]);
 
     const urgencyData = stats?.requestsByUrgency

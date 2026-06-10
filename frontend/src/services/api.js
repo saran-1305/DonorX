@@ -65,8 +65,15 @@ export const hospitalService = {
 };
 
 export const chatService = {
+    getConversations: () => api.get('/chat/conversations'),
+    getUnreadCount: () => api.get('/chat/unread-count'),
     getConversation: (hospitalId) => api.get(`/chat/${hospitalId}`),
     sendMessage: (hospitalId, message) => api.post(`/chat/${hospitalId}`, { message }),
+};
+
+export const routeService = {
+    getDrivingRoute: (fromLat, fromLng, toLat, toLng) =>
+        api.get('/routes/driving', { params: { fromLat, fromLng, toLat, toLng } }),
 };
 
 export const notificationService = {

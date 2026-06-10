@@ -67,6 +67,9 @@ app.use('/api/notifications', notificationRoutes);
 const chatRoutes = require('./routes/chatRoutes');
 app.use('/api/chat', chatRoutes);
 
+const routeRoutes = require('./routes/routeRoutes');
+app.use('/api/routes', routeRoutes);
+
 app.use((err, req, res, next) => {
     if (res.headersSent) {
         if (typeof next === 'function') {

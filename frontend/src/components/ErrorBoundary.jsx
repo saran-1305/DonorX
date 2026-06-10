@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component {
                     textAlign: 'center',
                     background: '#FEF2F2'
                 }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>😕</div>
+                    <div className="error-boundary-icon" style={{ marginBottom: '1rem' }}>!</div>
                     <h1 style={{ color: '#991B1B', marginBottom: '0.5rem' }}>Something went wrong.</h1>
                     <p style={{ color: '#7F1D1D', maxWidth: '500px', marginBottom: '2rem' }}>
                         The application encountered an unexpected error.
