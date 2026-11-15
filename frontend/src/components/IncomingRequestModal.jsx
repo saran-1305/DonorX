@@ -18,8 +18,12 @@ const IncomingRequestModal = () => {
     const [inventoryMatch, setInventoryMatch] = useState(null);
     const [timeLeft, setTimeLeft] = useState(180);
     const lastShownRequestIdRef = useRef(null);
+    const dismissedRequestIdsRef = useRef(new Set());
+    const isOpenRef = useRef(false);
     const { showToast, user } = useDonor();
     const navigate = useNavigate();
+
+    isOpenRef.current = isOpen;
 
     const formatRequired = (req) => {
         const { type, group, quantity, resourceCategory } = req.resourceNeeded;
@@ -61,7 +65,8 @@ const IncomingRequestModal = () => {
 
     const openRequest = useCallback((incReq) => {
         if (!incReq?._id) return;
-        if (lastShownRequestIdRef.current === incReq._id) return;
+        if (dismissedRequestIdsRef.current.has(incReq._id)) return;
+        if (isOpenRef.current && lastShownRequestIdRef.current === incReq._id) return;
         lastShownRequestIdRef.current = incReq._id;
         setRequest(incReq);
         setIsOpen(true);
@@ -71,10 +76,14 @@ const IncomingRequestModal = () => {
 
     const checkForRequests = useCallback(async () => {
         if (!user?._id) return;
+        if (isOpenRef.current) return;
         try {
             const { data } = await requestService.getIncoming();
             if (data?.length > 0) {
-                openRequest(data[0]);
+                const freshReq = data.find((r) => !dismissedRequestIdsRef.current.has(r._id));
+                if (freshReq) {
+                    openRequest(freshReq);
+                }
             }
         } catch (err) {
             console.error('Incoming request poll error:', err);
@@ -121,22 +130,26 @@ const IncomingRequestModal = () => {
 
     const handleAutoDeny = async () => {
         if (!request) return;
+        const reqId = request._id;
+        dismissedRequestIdsRef.current.add(reqId);
         try {
-            await requestService.respond(request._id, 'Deny');
+            await requestService.respond(reqId, 'Deny');
             showToast('Request auto-denied after 3 minutes', 'warning');
             setIsOpen(false);
             setRequest(null);
-            lastShownRequestIdRef.current = null;
         } catch (error) {
             console.error('Auto-deny error:', error);
+            setIsOpen(false);
+            setRequest(null);
         }
     };
 
     const handleRespond = async (status) => {
         if (!request) return;
         const requestId = request._id;
+        dismissedRequestIdsRef.current.add(requestId);
         try {
-            const { data } = await requestService.respond(requestId, status);
+            await requestService.respond(requestId, status);
             showToast(
                 status === 'Accept' ? 'Request accepted! Opening route...' : 'Request denied',
                 status === 'Accept' ? 'success' : 'info'
@@ -144,14 +157,14 @@ const IncomingRequestModal = () => {
             setIsOpen(false);
             setRequest(null);
             setTimeLeft(180);
-            lastShownRequestIdRef.current = null;
             if (status === 'Accept') {
                 navigate(`/map?request=${requestId}`);
             }
         } catch (error) {
             const errorMessage = error.response?.data?.message || error.message || 'Failed to respond';
             showToast(`Failed to respond: ${errorMessage}`, 'error');
-            checkForRequests();
+            setIsOpen(false);
+            setRequest(null);
         }
     };
 
@@ -164,7 +177,11 @@ const IncomingRequestModal = () => {
     if (!request) return null;
 
     return (
-        <Modal isOpen={isOpen} onClose={() => {}} maxWidth="600px">
+        <Modal isOpen={isOpen} onClose={() => {
+            if (request?._id) dismissedRequestIdsRef.current.add(request._id);
+            setIsOpen(false);
+            setRequest(null);
+        }} maxWidth="600px">
             <div style={{ textAlign: 'center', padding: '1rem' }}>
                 <h2 style={{ color: '#D32F2F', marginBottom: '0.5rem' }}>Emergency Request Incoming</h2>
                 <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{request.requestingHospital?.name || 'Unknown Hospital'}</p>

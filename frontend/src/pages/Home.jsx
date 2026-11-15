@@ -6,7 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { statsService, analyticsService, hospitalService } from '../services/api';
 import { getSocket } from '../services/socket';
-import { createLeafletMap, destroyLeafletMap } from '../utils/leafletMap';
+import { createLeafletMap, destroyLeafletMap, addStandardTileLayer } from '../utils/leafletMap';
 
 const URGENCY_COLORS = { Critical: '#DC2626', High: '#F97316', Medium: '#F59E0B', Low: '#10B981' };
 const RESOURCE_LABELS = { ICU_BED: 'ICU Bed', VENTILATOR: 'Ventilator', OXYGEN_CYLINDER: 'Oxygen', AMBULANCE: 'Ambulance' };
@@ -53,10 +53,16 @@ const Home = () => {
 
         const map = createLeafletMap(container);
         mapInstance.current = map;
-        map.setView([13.0827, 80.2707], 11);
+        map.setView([13.0604, 80.2514], 12);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+        addStandardTileLayer(map);
         markersLayer.current = L.layerGroup().addTo(map);
+
+        setTimeout(() => {
+            if (mapInstance.current) {
+                mapInstance.current.invalidateSize();
+            }
+        }, 250);
 
         return () => {
             markersLayer.current = null;

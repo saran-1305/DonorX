@@ -36,12 +36,17 @@ const NotificationBell = () => {
         fetchNotifications();
         const socket = getSocket();
         const onNotification = (n) => {
-            setNotifications((prev) => [n, ...prev].slice(0, 30));
+            if (!n || !n._id) return;
+            setNotifications((prev) => {
+                const exists = prev.some((x) => String(x._id) === String(n._id));
+                if (exists) return prev;
+                return [n, ...prev].slice(0, 30);
+            });
             setUnreadCount((c) => c + 1);
         };
         socket.on('notification', onNotification);
         return () => socket.off('notification', onNotification);
-    }, [user]);
+    }, [user?._id]);
 
     useEffect(() => {
         const handleClick = (e) => {
@@ -53,18 +58,26 @@ const NotificationBell = () => {
 
     const handleClick = async (n) => {
         if (!n.read) {
-            await notificationService.markRead(n._id);
-            setUnreadCount((c) => Math.max(0, c - 1));
-            setNotifications((prev) => prev.map((x) => (x._id === n._id ? { ...x, read: true } : x)));
+            try {
+                await notificationService.markRead(n._id);
+                setUnreadCount((c) => Math.max(0, c - 1));
+                setNotifications((prev) => prev.map((x) => (x._id === n._id ? { ...x, read: true } : x)));
+            } catch (err) {
+                console.error(err);
+            }
         }
         setOpen(false);
         if (n.link) navigate(n.link);
     };
 
     const markAllRead = async () => {
-        await notificationService.markAllRead();
-        setUnreadCount(0);
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        try {
+            await notificationService.markAllRead();
+            setUnreadCount(0);
+            setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const timeAgo = (date) => {
@@ -76,7 +89,15 @@ const NotificationBell = () => {
 
     return (
         <div className="notification-bell" ref={panelRef}>
-            <button className="notification-trigger" onClick={() => setOpen(!open)} aria-label="Notifications">
+            <button
+                type="button"
+                className="notification-trigger"
+                onClick={() => {
+                    if (!open) fetchNotifications();
+                    setOpen(!open);
+                }}
+                aria-label="Notifications"
+            >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -89,7 +110,9 @@ const NotificationBell = () => {
                     <div className="notification-panel-header">
                         <strong>Notifications</strong>
                         {unreadCount > 0 && (
-                            <button className="notification-mark-all" onClick={markAllRead}>Mark all read</button>
+                            <button type="button" className="notification-mark-all" onClick={markAllRead}>
+                                Mark all read
+                            </button>
                         )}
                     </div>
                     <div className="notification-list">
@@ -99,6 +122,7 @@ const NotificationBell = () => {
                             notifications.map((n) => (
                                 <button
                                     key={n._id}
+                                    type="button"
                                     className={`notification-item ${n.read ? '' : 'notification-unread'}`}
                                     onClick={() => handleClick(n)}
                                 >

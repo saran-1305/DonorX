@@ -5,7 +5,7 @@ import { hospitalService, requestService } from '../services/api';
 import api from '../services/api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { createLeafletMap, destroyLeafletMap } from '../utils/leafletMap';
+import { createLeafletMap, destroyLeafletMap, addStandardTileLayer } from '../utils/leafletMap';
 
 const fetchRoute = async (fromLat, fromLng, toLat, toLng) => {
     try {
@@ -193,24 +193,36 @@ const MapPage = () => {
 
     useEffect(() => {
         const container = mapContainer.current;
-        if (!container || mapReady.current) return;
+        if (!container) return;
 
-        const defaultCenter = [13.0827, 80.2707];
+        const defaultCenter = [13.0604, 80.2514];
         const center = hasOrigin ? [myLat, myLng] : defaultCenter;
 
         const map = createLeafletMap(container, { preferCanvas: true });
-        map.setView(center, hasOrigin ? 11 : 10);
+        map.setView(center, hasOrigin ? 12 : 11);
         mapInstance.current = map;
         mapReady.current = true;
-        setMapInitialized(true);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO',
-        }).addTo(map);
-
+        addStandardTileLayer(map);
         markersLayer.current = L.layerGroup().addTo(map);
 
+        setMapInitialized(true);
+
+        const onResize = () => {
+            if (mapInstance.current) {
+                mapInstance.current.invalidateSize();
+            }
+        };
+        window.addEventListener('resize', onResize);
+
+        setTimeout(() => {
+            if (mapInstance.current) {
+                mapInstance.current.invalidateSize();
+            }
+        }, 300);
+
         return () => {
+            window.removeEventListener('resize', onResize);
             routeLayer.current = null;
             markersLayer.current = null;
             mapReady.current = false;
@@ -224,9 +236,23 @@ const MapPage = () => {
 
         const map = mapInstance.current;
         const layer = markersLayer.current;
-        if (!map || !layer || loading) return;
+        if (!map || !layer || loading || !mapInitialized) return;
 
         layer.clearLayers();
+
+        // Plot current user hospital
+        if (hasOrigin) {
+            const selfIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div class='map-marker map-marker-self' title='Your Hospital'></div>",
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
+            });
+
+            L.marker([myLat, myLng], { icon: selfIcon })
+                .addTo(layer)
+                .bindPopup(`<strong>${user?.name || 'Your Hospital'} (Current Facility)</strong><br>${user?.address || ''}`);
+        }
 
         const peerHospitals = hospitals.filter((h) => {
             const c = h.location?.coordinates;
@@ -244,17 +270,31 @@ const MapPage = () => {
 
             L.marker([coords[1], coords[0]], { icon })
                 .addTo(layer)
-                .bindPopup(`<strong>${h.name}</strong><br>Click to view route from your hospital`)
+                .bindPopup(`<strong>${h.name}</strong><br>${h.address || ''}<br><span style="color:#2563eb; cursor:pointer; font-weight:600;">Click to view route from your hospital</span>`)
                 .on('click', () => drawRouteRef.current?.(h));
         });
 
         const points = peerHospitals.map((h) => [h.location.coordinates[1], h.location.coordinates[0]]);
-        if (points.length > 0 && !routeInfo) {
-            map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
-        } else if (hasOrigin && !routeInfo) {
-            map.setView([myLat, myLng], 11);
+        if (hasOrigin) {
+            points.push([myLat, myLng]);
         }
-    }, [hospitals, loading, hasOrigin, myLat, myLng, user?._id, requestId, routeInfo]);
+
+        if (points.length > 1 && !routeInfo) {
+            try {
+                map.fitBounds(L.latLngBounds(points), { padding: [50, 50], maxZoom: 14 });
+            } catch {
+                map.setView(hasOrigin ? [myLat, myLng] : [13.0604, 80.2514], 12);
+            }
+        } else if (hasOrigin && !routeInfo) {
+            map.setView([myLat, myLng], 12);
+        }
+
+        setTimeout(() => {
+            if (mapInstance.current) {
+                mapInstance.current.invalidateSize();
+            }
+        }, 150);
+    }, [hospitals, loading, hasOrigin, myLat, myLng, user?._id, requestId, routeInfo, mapInitialized]);
 
     useEffect(() => {
         if (!requestId || !mapInitialized) return;

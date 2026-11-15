@@ -97,8 +97,10 @@ const Tracking = () => {
         const map = L.map(mapContainer.current).setView([centerLat, centerLng], 12);
         mapInstance.current = map;
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO',
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            subdomains: ['a', 'b', 'c'],
+            attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map);
 
         const hospitalIcon = L.divIcon({

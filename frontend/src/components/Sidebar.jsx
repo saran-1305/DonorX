@@ -120,7 +120,7 @@ const Sidebar = () => {
             socket.off('notification', refreshAlerts);
             socket.off('chat_message', onChatMsg);
         };
-    }, [user]);
+    }, [user?._id]);
 
     const handleLogout = () => {
         logout();

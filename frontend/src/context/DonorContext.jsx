@@ -132,7 +132,7 @@ export const DonorProvider = ({ children }) => {
     };
 
     const showToast = (message, type = 'default') => {
-        const id = Date.now();
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));

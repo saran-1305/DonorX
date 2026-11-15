@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { createLeafletMap, destroyLeafletMap } from '../utils/leafletMap';
+import { createLeafletMap, destroyLeafletMap, addStandardTileLayer } from '../utils/leafletMap';
 import { useVoiceRequest } from '../hooks/useVoiceRequest';
 
 const NewRequest = () => {
@@ -294,9 +294,12 @@ const NewRequest = () => {
         map.setView(CENTER, 13);
         mapInstance.current = map;
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
-        }).addTo(map);
+        addStandardTileLayer(map);
+        setTimeout(() => {
+            if (mapInstance.current) {
+                mapInstance.current.invalidateSize();
+            }
+        }, 200);
 
         // User Icon
         const userIcon = L.divIcon({

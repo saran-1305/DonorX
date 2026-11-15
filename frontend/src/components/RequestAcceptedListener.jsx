@@ -34,7 +34,7 @@ const RequestAcceptedListener = () => {
 
         socket.on('request_accepted', onAccepted);
         return () => socket.off('request_accepted', onAccepted);
-    }, [user, navigate, showToast]);
+    }, [user?._id, navigate, showToast]);
 
     return null;
 };

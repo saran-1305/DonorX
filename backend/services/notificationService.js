@@ -2,6 +2,19 @@ const Notification = require('../models/Notification');
 const { getIO } = require('../socket');
 
 exports.createNotification = async (hospitalId, { type, title, message, link, metadata }) => {
+    // Avoid duplicate unread emergency notifications for the same request
+    if (type === 'EMERGENCY' && metadata?.requestId) {
+        const existing = await Notification.findOne({
+            hospitalId,
+            type: 'EMERGENCY',
+            'metadata.requestId': metadata.requestId,
+            read: false,
+        });
+        if (existing) {
+            return existing;
+        }
+    }
+
     const notification = await Notification.create({
         hospitalId,
         type: type || 'SYSTEM',
