@@ -1,5 +1,4 @@
-const TransportTracking = require('../models/TransportTracking');
-const EmergencyRequest = require('../models/EmergencyRequest');
+const { TransportTracking, EmergencyRequest } = require('../models');
 const { getIO } = require('../socket');
 
 const ACTIVE_SIMULATIONS = new Map();

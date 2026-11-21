@@ -1,4 +1,4 @@
-const Hospital = require('../models/Hospital');
+const { Hospital, BloodInventory, ResourceInventory, OrganInventory } = require('../models');
 
 const compatibility = {
     'O-': ['O-'],
@@ -18,33 +18,6 @@ const getResourceCategory = (resourceNeeded) => {
     if (RESOURCE_TYPES.includes(resourceNeeded.type)) return 'RESOURCE';
     if (resourceNeeded.type === 'ORGAN') return 'ORGAN';
     return 'BLOOD';
-};
-
-const isInventoryMatch = (hospital, resourceNeeded) => {
-    const category = getResourceCategory(resourceNeeded);
-
-    if (category === 'RESOURCE') {
-        if (!hospital.resources || !Array.isArray(hospital.resources)) return false;
-        const item = hospital.resources.find(
-            (r) => r.resourceType === resourceNeeded.type && r.available >= resourceNeeded.quantity
-        );
-        return !!item;
-    }
-
-    if (!hospital.inventory || !Array.isArray(hospital.inventory)) return false;
-
-    return hospital.inventory.some((item) => {
-        if (item.type !== resourceNeeded.type || item.quantity < resourceNeeded.quantity) {
-            return false;
-        }
-
-        if (resourceNeeded.type === 'BLOOD') {
-            const compatibleGroups = compatibility[resourceNeeded.group] || [resourceNeeded.group];
-            return compatibleGroups.includes(item.group);
-        }
-
-        return item.group === resourceNeeded.group;
-    });
 };
 
 exports.findMatchingHospitals = async (request) => {
@@ -80,39 +53,57 @@ exports.findMatchingHospitals = async (request) => {
             return [];
         }
 
+        // Strict radius boundary: radius in radians
         const radiusInRadians = (searchRadius || 5) / 6378.1;
 
-        let hospitalsInRadius = await Hospital.find({
+        // Query only hospitals strictly within the current AGE radius
+        const hospitalsInRadius = await Hospital.find({
             location: {
                 $geoWithin: {
                     $centerSphere: [coordinates, radiusInRadians],
                 },
             },
             _id: { $ne: request.requestingHospital },
-        }).select('_id inventory resources location name');
+        }).select('_id name location');
 
         if (hospitalsInRadius.length === 0) {
-            hospitalsInRadius = await Hospital.find({
-                _id: { $ne: request.requestingHospital },
-            }).select('_id inventory resources location name');
+            return [];
         }
 
-        const matchedHospitals = hospitalsInRadius.filter((hospital) =>
-            isInventoryMatch(hospital, resourceNeeded)
-        );
+        const hospitalIds = hospitalsInRadius.map((h) => h._id);
+        const matchedHospitalIds = new Set();
 
-        if (matchedHospitals.length > 0) {
-            return matchedHospitals.map((h) => h._id);
+        if (category === 'RESOURCE') {
+            const matchedRes = await ResourceInventory.find({
+                hospitalId: { $in: hospitalIds },
+                resourceType: resourceNeeded.type,
+                available: { $gte: resourceNeeded.quantity || 1 },
+            });
+            matchedRes.forEach((r) => matchedHospitalIds.add(String(r.hospitalId)));
+        } else if (category === 'BLOOD') {
+            const compatibleGroups = compatibility[resourceNeeded.group] || [resourceNeeded.group];
+            const matchedBlood = await BloodInventory.find({
+                hospitalId: { $in: hospitalIds },
+                bloodGroup: { $in: compatibleGroups },
+                unitsAvailable: { $gte: resourceNeeded.quantity || 1 },
+            });
+            matchedBlood.forEach((b) => matchedHospitalIds.add(String(b.hospitalId)));
+        } else if (category === 'ORGAN') {
+            const organTypeUpper = (resourceNeeded.group || resourceNeeded.type).toUpperCase();
+            const matchedOrgans = await OrganInventory.find({
+                hospitalId: { $in: hospitalIds },
+                organType: organTypeUpper,
+                status: 'AVAILABLE',
+            });
+            matchedOrgans.forEach((o) => matchedHospitalIds.add(String(o.hospitalId)));
         }
 
-        if (hospitalsInRadius.length > 0) {
-            console.warn(
-                `No strict inventory match for request — notifying ${hospitalsInRadius.length} hospital(s) in search area`
-            );
-            return hospitalsInRadius.map((h) => h._id);
+        if (matchedHospitalIds.size > 0) {
+            return Array.from(matchedHospitalIds);
         }
 
-        return [];
+        // Fallback: Return facilities within search radius so emergency staff can respond manually
+        return hospitalIds.map((id) => String(id));
     } catch (error) {
         console.error('Error in findMatchingHospitals:', error);
         return [];

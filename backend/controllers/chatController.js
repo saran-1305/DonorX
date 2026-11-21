@@ -1,4 +1,4 @@
-const ChatMessage = require('../models/ChatMessage');
+const { ChatMessage } = require('../models');
 const Hospital = require('../models/Hospital');
 const { createNotification } = require('../services/notificationService');
 const { getIO } = require('../socket');

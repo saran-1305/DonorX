@@ -1,4 +1,4 @@
-const AuditLog = require('../models/AuditLog');
+const { AuditLog } = require('../models');
 
 // @desc    Get all audit logs
 // @route   GET /api/audit

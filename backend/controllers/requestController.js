@@ -1,4 +1,4 @@
-const EmergencyRequest = require('../models/EmergencyRequest');
+const { EmergencyRequest } = require('../models');
 const { calculatePriority } = require('../services/priorityService');
 const { createAuditLog } = require('../services/auditService');
 const {
@@ -111,10 +111,25 @@ exports.createRequest = async (req, res) => {
             requestingHospital: req.user._id,
         };
 
-        if (location && location.lat && location.lon) {
+        if (location) {
+            if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+                newRequestData.location = {
+                    type: 'Point',
+                    coordinates: location.coordinates
+                };
+            } else if (location.lat && (location.lng || location.lon)) {
+                newRequestData.location = {
+                    type: 'Point',
+                    coordinates: [location.lng || location.lon, location.lat]
+                };
+            }
+        }
+
+        // Fallback to requesting hospital facility coordinates if request coordinates were omitted
+        if (!newRequestData.location && req.user.location && req.user.location.coordinates) {
             newRequestData.location = {
                 type: 'Point',
-                coordinates: [location.lon, location.lat]
+                coordinates: req.user.location.coordinates
             };
         }
 

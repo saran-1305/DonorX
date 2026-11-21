@@ -1,4 +1,4 @@
-const AuditLog = require('../models/AuditLog');
+const { AuditLog } = require('../models');
 const crypto = require('crypto');
 
 const createAuditLog = async (requestId, action, payload) => {

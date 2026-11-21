@@ -10,6 +10,15 @@ jest.mock('mongoose', () => {
 const Hospital = require('../models/Hospital');
 
 jest.mock('../models/Hospital');
+jest.mock('../models', () => ({
+    User: {
+        findOne: jest.fn().mockResolvedValue(null),
+    },
+    Hospital: {
+        findOne: jest.fn().mockResolvedValue(null),
+        findById: jest.fn().mockResolvedValue(null),
+    },
+}));
 
 const request = require('supertest');
 const app = require('../app');

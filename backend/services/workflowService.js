@@ -1,5 +1,4 @@
-const EmergencyRequest = require('../models/EmergencyRequest');
-const Hospital = require('../models/Hospital');
+const { EmergencyRequest, Hospital, BloodInventory, ResourceInventory, OrganInventory } = require('../models');
 const { findMatchingHospitals } = require('./matchingService');
 const { createAuditLog } = require('./auditService');
 const { createNotification } = require('./notificationService');
@@ -138,23 +137,36 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         resourceCategory ||
         (['ICU_BED', 'VENTILATOR', 'OXYGEN_CYLINDER', 'AMBULANCE'].includes(type) ? 'RESOURCE' : type);
 
+    // ATOMIC RESERVATION ON DISCRETE V2 INVENTORIES
     if (category === 'RESOURCE') {
-        const resources = hospital.resources || [];
-        const resourceItem = resources.find((r) => r.resourceType === type);
-        if (!resourceItem || resourceItem.available < quantity) {
-            throw new Error(`Insufficient ${type.replace(/_/g, ' ')} — need ${quantity}, have ${resourceItem?.available ?? 0}`);
+        const updatedRes = await ResourceInventory.findOneAndUpdate(
+            { hospitalId, resourceType: type, available: { $gte: quantity } },
+            { $inc: { available: -quantity, reserved: quantity } },
+            { new: true }
+        );
+        if (!updatedRes) {
+            throw new Error(`Insufficient ${type.replace(/_/g, ' ')} or conflicting reservation — need ${quantity}`);
         }
-        resourceItem.available -= quantity;
-    } else {
-        const inventory = hospital.inventory || [];
-        const inventoryItem = inventory.find((i) => i.type === type && i.group === group);
-        if (!inventoryItem || inventoryItem.quantity < quantity) {
-            throw new Error(`Insufficient ${group} ${type} — need ${quantity}, have ${inventoryItem?.quantity ?? 0}`);
+    } else if (category === 'BLOOD') {
+        const updatedBlood = await BloodInventory.findOneAndUpdate(
+            { hospitalId, bloodGroup: group, unitsAvailable: { $gte: quantity } },
+            { $inc: { unitsAvailable: -quantity, unitsReserved: quantity } },
+            { new: true }
+        );
+        if (!updatedBlood) {
+            throw new Error(`Insufficient ${group} Blood or units reserved concurrently — need ${quantity}`);
         }
-        inventoryItem.quantity -= quantity;
+    } else if (category === 'ORGAN') {
+        const organTypeUpper = (group || type).toUpperCase();
+        const updatedOrgan = await OrganInventory.findOneAndUpdate(
+            { hospitalId, organType: organTypeUpper, status: 'AVAILABLE' },
+            { $set: { status: 'RESERVED' } },
+            { new: true }
+        );
+        if (!updatedOrgan) {
+            throw new Error(`Organ ${group} is no longer available for reservation`);
+        }
     }
-
-    await hospital.save();
 
     request.status = 'Pending';
     request.assignedHospital = hospitalId;

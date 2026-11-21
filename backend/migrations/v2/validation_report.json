@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-11-18T08:28:00.000Z",
+  "stage": "STAGE_5_DEEP_VALIDATION",
+  "overallIntegrityStatus": "VALIDATED_WITH_DOCUMENTED_FINDINGS",
+  "databases": {
+    "source": "donorx",
+    "destination": "donorx_v2"
+  },
+  "summary": {
+    "sourceCollectionsCount": 7,
+    "destinationCollectionsCount": 16,
+    "totalSourceDocuments": 18,
+    "totalDestinationDocuments": 70,
+    "inventoryUnitsReconciled": true,
+    "geoSpatialIndexWorking": true,
+    "cryptographicAuditChainIntact": true
+  },
+  "collectionInventory": {
+    "hospitals": { "sourceCount": 5, "destCount": 5, "type": "MIGRATED_ENTITY", "status": "MATCHED" },
+    "users": { "sourceCount": 0, "destCount": 5, "type": "EXTRACTED_AUTH_ENTITY", "status": "MATCHED_ONE_PER_HOSPITAL" },
+    "blood_inventories": { "sourceCount": 0, "destCount": 26, "type": "EXTRACTED_INVENTORY", "status": "RECONCILED_247_UNITS" },
+    "organ_inventories": { "sourceCount": 0, "destCount": 6, "type": "EXTRACTED_INVENTORY", "status": "FLAGGED_FOR_CLINICAL_REVIEW" },
+    "resource_inventories": { "sourceCount": 0, "destCount": 20, "type": "EXTRACTED_INVENTORY", "status": "RECONCILED_ALL_RESOURCES" },
+    "emergencyrequests": { "sourceCount": 1, "destCount": 1, "type": "MIGRATED_ENTITY", "status": "MATCHED" },
+    "transporttrackings": { "sourceCount": 1, "destCount": 1, "type": "MIGRATED_ENTITY", "status": "MATCHED_GEOJSON_NORMALIZED" },
+    "notifications": { "sourceCount": 5, "destCount": 5, "type": "MIGRATED_ENTITY", "status": "MATCHED" },
+    "auditlogs": { "sourceCount": 6, "destCount": 6, "type": "MIGRATED_ENTITY", "status": "MATCHED_HASH_CHAIN_PRESERVED" },
+    "chatmessages": { "sourceCount": 0, "destCount": 0, "type": "CORE_ENTITY", "status": "READY" },
+    "consultations": { "sourceCount": 0, "destCount": 0, "type": "CORE_ENTITY", "status": "READY" },
+    "ambulances": { "sourceCount": 0, "destCount": 0, "type": "NEW_SUPPORTING_ENTITY", "status": "READY" },
+    "deliveries": { "sourceCount": 0, "destCount": 0, "type": "NEW_SUPPORTING_ENTITY", "status": "READY" },
+    "resource_matches": { "sourceCount": 0, "destCount": 0, "type": "NEW_SUPPORTING_ENTITY", "status": "READY" },
+    "medical_reports": { "sourceCount": 0, "destCount": 0, "type": "NEW_SUPPORTING_ENTITY", "status": "READY" },
+    "ai_insights": { "sourceCount": 0, "destCount": 0, "type": "NEW_SUPPORTING_ENTITY", "status": "READY" }
+  },
+  "findings": [
+    {
+      "code": "LEGACY_SEED_ORPHAN_REFERENCES",
+      "severity": "LOW",
+      "description": "EmergencyRequest (1) and Notifications (5) reference historical mock hospital ObjectIds created during initial Chennai seeding prior to current 5 hospitals.",
+      "remediation": "Preserved exact historical ObjectId references to avoid data rewriting."
+    },
+    {
+      "code": "API_RESPONSE_COMPATIBILITY_SHAPE",
+      "severity": "HIGH",
+      "description": "Frontend /api/inventory and /api/resources expect direct array responses. Stage 6 must map BloodInventory, OrganInventory and ResourceInventory back to legacy shapes.",
+      "remediation": "Implement backward-compatibility adapter in controllers."
+    }
+  ]
+}

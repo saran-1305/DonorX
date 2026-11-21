@@ -1,5 +1,4 @@
-const EmergencyRequest = require('../models/EmergencyRequest');
-const Hospital = require('../models/Hospital');
+const { EmergencyRequest, Hospital, BloodInventory, ResourceInventory } = require('../models');
 
 const RESOURCE_TYPES = ['ICU_BED', 'VENTILATOR', 'OXYGEN_CYLINDER', 'AMBULANCE'];
 const SHORTAGE_THRESHOLD = 0.25;

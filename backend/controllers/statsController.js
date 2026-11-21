@@ -1,5 +1,4 @@
-const EmergencyRequest = require('../models/EmergencyRequest');
-const Hospital = require('../models/Hospital');
+const { EmergencyRequest, Hospital } = require('../models');
 
 // @desc    Get platform statistics
 // @route   GET /api/stats

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Hospital = require('../models/Hospital');
+const { User } = require('../models');
 
 const protect = async (req, res, next) => {
     let token;
@@ -13,11 +14,25 @@ const protect = async (req, res, next) => {
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            req.user = await Hospital.findById(decoded.id).select('-password');
+            let hospital = null;
+            let user = null;
 
-            if (!req.user) {
+            if (decoded.hospitalId) {
+                hospital = await Hospital.findById(decoded.hospitalId).select('-password');
+                if (decoded.userId) {
+                    try { user = await User.findById(decoded.userId).select('-password'); } catch (e) {}
+                }
+            } else if (decoded.id) {
+                hospital = await Hospital.findById(decoded.id).select('-password');
+            }
+
+            if (!hospital) {
                 return res.status(401).json({ message: 'Not authorized, user not found' });
             }
+
+            req.user = hospital;
+            req.authUser = user;
+            req.hospital = hospital;
 
             return next();
         } catch (error) {

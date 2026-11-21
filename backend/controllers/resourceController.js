@@ -1,10 +1,7 @@
-const Hospital = require('../models/Hospital');
+const { ResourceInventory } = require('../models');
 
 const VALID_RESOURCE_TYPES = ['ICU_BED', 'VENTILATOR', 'OXYGEN_CYLINDER', 'AMBULANCE'];
 
-// @desc    Get hospital resources
-// @route   GET /api/resources
-// @access  Private
 const DEFAULT_RESOURCES = [
     { resourceType: 'ICU_BED', available: 5, total: 10 },
     { resourceType: 'VENTILATOR', available: 3, total: 6 },
@@ -12,17 +9,38 @@ const DEFAULT_RESOURCES = [
     { resourceType: 'AMBULANCE', available: 2, total: 4 },
 ];
 
+// @desc    Get hospital resources
+// @route   GET /api/resources
+// @access  Private
 exports.getResources = async (req, res) => {
     try {
-        const hospital = await Hospital.findById(req.user._id);
-        if (!hospital) {
-            return res.status(404).json({ message: 'Hospital not found' });
+        const hospitalId = req.user._id;
+
+        let resources = await ResourceInventory.find({ hospitalId });
+
+        if (!resources || resources.length === 0) {
+            // Seed defaults for new facilities if none exist
+            for (const def of DEFAULT_RESOURCES) {
+                await ResourceInventory.create({
+                    hospitalId,
+                    resourceType: def.resourceType,
+                    available: def.available,
+                    total: def.total,
+                    reserved: 0,
+                });
+            }
+            resources = await ResourceInventory.find({ hospitalId });
         }
-        if (!hospital.resources || hospital.resources.length === 0) {
-            hospital.resources = DEFAULT_RESOURCES;
-            await hospital.save();
-        }
-        res.json(hospital.resources || []);
+
+        const formatted = resources.map((r) => ({
+            _id: r._id,
+            resourceType: r.resourceType,
+            available: r.available,
+            total: r.total,
+            reserved: r.reserved,
+        }));
+
+        res.json(formatted);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -45,23 +63,21 @@ exports.updateResources = async (req, res) => {
     }
 
     try {
-        const hospital = await Hospital.findById(req.user._id);
-        if (!hospital) {
-            return res.status(404).json({ message: 'Hospital not found' });
-        }
+        const hospitalId = req.user._id;
 
-        const resourceItem = hospital.resources.find((r) => r.resourceType === resourceType);
-        if (!resourceItem) {
-            return res.status(404).json({ message: 'Resource type not found for this hospital' });
-        }
+        const updated = await ResourceInventory.findOneAndUpdate(
+            { hospitalId, resourceType },
+            {
+                $set: { available },
+                $setOnInsert: { hospitalId, resourceType, total: available, reserved: 0 },
+            },
+            { upsert: true, new: true }
+        );
 
-        resourceItem.available = available;
-        if (available > resourceItem.total) {
-            resourceItem.total = available;
-        }
-
-        await hospital.save();
-        res.json(hospital.resources);
+        res.json({
+            message: `${resourceType} available count updated to ${available}`,
+            resource: updated,
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

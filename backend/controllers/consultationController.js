@@ -1,4 +1,4 @@
-const Consultation = require('../models/Consultation');
+const { Consultation } = require('../models');
 const { getIO } = require('../socket');
 
 exports.createConsultation = async (req, res) => {

@@ -1,9 +1,15 @@
 const Hospital = require('../models/Hospital');
+const { User } = require('../models');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (payload) => {
+    // If passed a simple ObjectId/string ID, wrap as { id }
+    const tokenData = typeof payload === 'object' && payload !== null && !payload._bsontype
+        ? payload
+        : { id: payload };
+
+    return jwt.sign(tokenData, process.env.JWT_SECRET, {
         expiresIn: '30d',
     });
 };
@@ -103,18 +109,42 @@ exports.loginHospital = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        const hospital = await Hospital.findOne({ email });
+        const cleanEmail = email.toLowerCase().trim();
 
-        if (hospital && (await hospital.matchPassword(password))) {
+        // 1. Authenticate against User account (primary in V2)
+        const user = await User.findOne({ email: cleanEmail });
+        let hospital = null;
+
+        if (user && user.matchPassword && (await user.matchPassword(password))) {
+            hospital = await Hospital.findById(user.hospitalId);
+        } else {
+            // 2. Fallback check against Hospital document directly if password exists
+            hospital = await Hospital.findOne({ email: cleanEmail });
+            if (hospital && hospital.matchPassword && (await hospital.matchPassword(password))) {
+                // authenticated via hospital document directly
+            } else {
+                hospital = null;
+            }
+        }
+
+        if (hospital) {
             res.json({
                 _id: hospital._id,
-                name: hospital.name,
-                email: hospital.email,
+                userId: user ? user._id : hospital._id,
+                hospitalId: hospital._id,
+                name: user ? user.name : hospital.name,
+                hospitalName: hospital.name,
+                email: cleanEmail,
+                role: user ? user.role : 'HOSPITAL_ADMIN',
                 contactPhone: hospital.contactPhone,
                 contactPerson: hospital.contactPerson,
                 address: hospital.address,
                 location: hospital.location,
-                token: generateToken(hospital._id),
+                token: generateToken({
+                    id: hospital._id,
+                    userId: user ? user._id : null,
+                    hospitalId: hospital._id,
+                }),
             });
         } else {
             res.status(401).json({ message: 'Invalid email or password' });

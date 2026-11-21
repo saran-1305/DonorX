@@ -1,4 +1,4 @@
-const Notification = require('../models/Notification');
+const { Notification } = require('../models');
 const { getIO } = require('../socket');
 
 exports.createNotification = async (hospitalId, { type, title, message, link, metadata }) => {
