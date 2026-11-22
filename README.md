@@ -33,13 +33,17 @@ DonorX is a full-stack healthcare emergency coordination platform that connects 
 Create a `.env` file in `DonorX/backend/`:
 
 ```env
-MONGO_URI=mongodb://localhost:27017/donorx
+MONGO_URI=mongodb://localhost:27017/donorx_v2
+# For Atlas, set this instead; it takes precedence over MONGO_URI.
+# ATLAS_MONGO_URI=mongodb+srv://<db_username>:<db_password>@<cluster>/<database>?retryWrites=true&w=majority
 JWT_SECRET=your_jwt_secret_here
 GEMINI_API_KEY=your_gemini_api_key_here
 NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:5173
 ```
+
+The backend requires an explicit MongoDB URI and stops if the selected database is unreachable. It does not silently switch to a local database, so registration checks run against the configured database.
 
 ### Install Dependencies
 

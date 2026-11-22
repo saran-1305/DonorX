@@ -24,9 +24,13 @@ const logger = winston.createLogger({
 });
 
 const connectDB = async () => {
-    // Priority: ATLAS_MONGO_URI > MONGO_URI > local donorx fallback
-    const uri = process.env.ATLAS_MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/donorx_v2';
-    const fallbackUri = process.env.MONGO_URI_FALLBACK;
+    const uri = process.env.ATLAS_MONGO_URI || process.env.MONGO_URI;
+
+    if (!uri) {
+        logger.error('MongoDB URI is not configured. Set ATLAS_MONGO_URI or MONGO_URI in backend/.env.');
+        process.exit(1);
+        return;
+    }
 
     try {
         const conn = await mongoose.connect(uri);
@@ -34,18 +38,7 @@ const connectDB = async () => {
         const dbName = conn.connection.name;
         logger.info(`MongoDB Connected successfully to [${dbName}] at ${hostDisplay}`);
     } catch (error) {
-        logger.warn(`Primary MongoDB connection failed: ${error.message}`);
-        if (fallbackUri) {
-            try {
-                logger.info('Retrying with fallback MongoDB connection string...');
-                const conn = await mongoose.connect(fallbackUri);
-                logger.info(`MongoDB Connected (fallback): ${conn.connection.host}`);
-                return;
-            } catch (fallbackError) {
-                logger.error(`Fallback connection failed: ${fallbackError.message}`);
-            }
-        }
-        logger.error(`Error: ${error.message}`);
+        logger.error(`MongoDB connection failed: ${error.message}`);
         process.exit(1);
     }
 };
