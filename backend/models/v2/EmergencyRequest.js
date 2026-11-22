@@ -91,7 +91,7 @@ const EmergencyRequestSchema = new mongoose.Schema(
         },
         maxIterations: {
             type: Number,
-            default: 6, // 5km to 30km
+            default: 8, // 5km to 40km (8 iterations of 5km increments)
         },
         potentialMatches: [
             {

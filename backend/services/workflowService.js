@@ -74,9 +74,9 @@ exports.expandSearchRadius = async (requestId) => {
     if (!request || request.status !== 'Generated') return;
 
     const currentIteration = request.iteration || 1;
-    const maxAllowed = request.maxIterations || 6;
+    const maxAllowed = request.maxIterations || 8;
 
-    if (currentIteration >= maxAllowed || (request.searchRadius || 5) >= 50) {
+    if (currentIteration >= maxAllowed || (request.searchRadius || 5) >= 40) {
         request.status = 'Ended';
         await request.save();
         await createAuditLog(requestId, 'MAX_RADIUS_REACHED_ENDED', {

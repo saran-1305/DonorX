@@ -3,19 +3,19 @@ const { EmergencyRequest, OrganInventory, AuditLog } = require('../models');
 const workflowService = require('../services/workflowService');
 
 const startScheduler = () => {
-    // For testing: checks every 10 seconds and expands if unaccepted after 30 seconds
-    cron.schedule('*/10 * * * * *', async () => {
+    // For testing: checks every 5 seconds and expands if unaccepted after 15 seconds
+    cron.schedule('*/5 * * * * *', async () => {
         const now = new Date();
-        const thirtySecondsAgo = new Date(now.getTime() - 30 * 1000);
+        const fifteenSecondsAgo = new Date(now.getTime() - 15 * 1000);
 
         try {
             const requestsToExpand = await EmergencyRequest.find({
                 status: 'Generated',
-                updatedAt: { $lt: thirtySecondsAgo },
+                updatedAt: { $lt: fifteenSecondsAgo },
             });
 
             for (const req of requestsToExpand) {
-                console.log(`Expanding radius for request ${req._id} (30s test mode)`);
+                console.log(`Expanding radius for request ${req._id} (15s test mode)`);
                 await workflowService.expandSearchRadius(req._id);
             }
 
