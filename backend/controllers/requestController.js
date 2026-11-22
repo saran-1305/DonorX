@@ -295,16 +295,18 @@ exports.respondToRequest = async (req, res) => {
 
     try {
         console.log('Respond to request:', { requestId, response, hospitalId: req.user._id });
-        
-        if (response === 'Accept') {
+
+        const isAccept = typeof response === 'string' && response.trim().toLowerCase() === 'accept';
+
+        if (isAccept) {
             await handleAcceptance(requestId, req.user._id);
             // Fetch updated request to return full details
             const updatedRequest = await EmergencyRequest.findById(requestId)
                 .populate('assignedHospital', 'name location')
                 .populate('requestingHospital', 'name location');
-            res.json({ 
+            res.json({
                 message: 'Request accepted successfully',
-                request: updatedRequest
+                request: updatedRequest,
             });
         } else {
             await handleDenial(requestId, req.user._id);
@@ -324,6 +326,20 @@ exports.updateRequestStatus = async (req, res) => {
     const requestId = req.params.id;
 
     try {
+        const existingReq = await EmergencyRequest.findById(requestId);
+        if (!existingReq) {
+            return res.status(404).json({ message: 'Request not found' });
+        }
+
+        // Verify caller authorization: only requesting or assigned hospital may update lifecycle
+        const callerId = req.user._id.toString();
+        const isRequestor = existingReq.requestingHospital?.toString() === callerId;
+        const isAssigned = existingReq.assignedHospital && existingReq.assignedHospital.toString() === callerId;
+
+        if (!isRequestor && !isAssigned) {
+            return res.status(403).json({ message: 'Not authorized to update this request status' });
+        }
+
         await updateLifecycle(requestId, status, location);
         if (status === 'Completed') {
             await completeTransport(requestId);

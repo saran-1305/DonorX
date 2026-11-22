@@ -3,20 +3,19 @@ const { EmergencyRequest, OrganInventory, AuditLog } = require('../models');
 const workflowService = require('../services/workflowService');
 
 const startScheduler = () => {
-    cron.schedule('*/1 * * * *', async () => {
-        console.log('Running Workflow Scheduler...');
-
+    // For testing: checks every 10 seconds and expands if unaccepted after 30 seconds
+    cron.schedule('*/10 * * * * *', async () => {
         const now = new Date();
-        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+        const thirtySecondsAgo = new Date(now.getTime() - 30 * 1000);
 
         try {
             const requestsToExpand = await EmergencyRequest.find({
                 status: 'Generated',
-                updatedAt: { $lt: fiveMinutesAgo },
+                updatedAt: { $lt: thirtySecondsAgo },
             });
 
             for (const req of requestsToExpand) {
-                console.log(`Expanding radius for request ${req._id}`);
+                console.log(`Expanding radius for request ${req._id} (30s test mode)`);
                 await workflowService.expandSearchRadius(req._id);
             }
 
@@ -42,28 +41,6 @@ const startScheduler = () => {
             }
         } catch (error) {
             console.error('Scheduler Error:', error);
-        }
-    });
-
-    cron.schedule('*/3 * * * *', async () => {
-        console.log('Running Timeout Scheduler...');
-
-        const now = new Date();
-        const threeMinutesAgo = new Date(now.getTime() - 3 * 60 * 1000);
-
-        try {
-            const timedOutRequests = await EmergencyRequest.find({
-                status: 'Generated',
-                potentialMatches: { $exists: true, $not: { $size: 0 } },
-                updatedAt: { $lt: threeMinutesAgo },
-            });
-
-            for (const req of timedOutRequests) {
-                console.log(`Handling timeout for request ${req._id}`);
-                await workflowService.handleTimeout(req._id);
-            }
-        } catch (error) {
-            console.error('Timeout Scheduler Error:', error);
         }
     });
 

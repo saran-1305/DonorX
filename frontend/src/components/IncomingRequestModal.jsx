@@ -16,7 +16,7 @@ const IncomingRequestModal = () => {
     const [request, setRequest] = useState(null);
     const [isOpen, setIsOpen] = useState(false);
     const [inventoryMatch, setInventoryMatch] = useState(null);
-    const [timeLeft, setTimeLeft] = useState(180);
+    const [timeLeft, setTimeLeft] = useState(30);
     const lastShownRequestIdRef = useRef(null);
     const dismissedRequestIdsRef = useRef(new Set());
     const isOpenRef = useRef(false);
@@ -114,7 +114,7 @@ const IncomingRequestModal = () => {
 
     useEffect(() => {
         if (!isOpen || !request) return;
-        setTimeLeft(180);
+        setTimeLeft(30);
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
@@ -132,16 +132,9 @@ const IncomingRequestModal = () => {
         if (!request) return;
         const reqId = request._id;
         dismissedRequestIdsRef.current.add(reqId);
-        try {
-            await requestService.respond(reqId, 'Deny');
-            showToast('Request auto-denied after 3 minutes', 'warning');
-            setIsOpen(false);
-            setRequest(null);
-        } catch (error) {
-            console.error('Auto-deny error:', error);
-            setIsOpen(false);
-            setRequest(null);
-        }
+        showToast('30-second response window expired — request is expanding to next 5km radius', 'info');
+        setIsOpen(false);
+        setRequest(null);
     };
 
     const handleRespond = async (status) => {

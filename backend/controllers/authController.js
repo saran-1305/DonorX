@@ -1,5 +1,5 @@
 const Hospital = require('../models/Hospital');
-const { User } = require('../models');
+const { User, BloodInventory, ResourceInventory } = require('../models');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 
@@ -42,52 +42,100 @@ exports.registerHospital = async (req, res) => {
     const { name, email, password, location, contactPhone, contactPerson, address } = req.body;
 
     try {
-        const hospitalExists = await Hospital.findOne({ email });
+        const cleanEmail = email.toLowerCase().trim();
 
-        if (hospitalExists) {
-            return res.status(400).json({ message: 'Hospital already exists' });
+        const hospitalExists = await Hospital.findOne({ email: cleanEmail });
+        const userExists = await User.findOne({ email: cleanEmail });
+
+        if (hospitalExists || userExists) {
+            return res.status(400).json({ message: 'A hospital or user account already exists with this email' });
         }
 
+        // 1. Create Hospital facility document
         const hospital = await Hospital.create({
-            name,
-            email,
-            password,
+            name: name.trim(),
+            email: cleanEmail,
             contactPhone: contactPhone || '',
             contactPerson: contactPerson || name,
             address: address || '',
             location: {
                 type: 'Point',
-                coordinates: [location.lon, location.lat],
+                coordinates: [Number(location.lon), Number(location.lat)],
             },
-            inventory: [
-                { type: 'BLOOD', group: 'O+', quantity: 10 },
-                { type: 'BLOOD', group: 'O-', quantity: 4 },
-                { type: 'BLOOD', group: 'A+', quantity: 6 },
-                { type: 'BLOOD', group: 'B+', quantity: 5 },
-                { type: 'ORGAN', group: 'Kidney', quantity: 1 },
-                { type: 'ORGAN', group: 'Liver', quantity: 1 },
-            ],
-            resources: [
-                { resourceType: 'ICU_BED', available: 5, total: 10 },
-                { resourceType: 'VENTILATOR', available: 3, total: 6 },
-                { resourceType: 'OXYGEN_CYLINDER', available: 20, total: 30 },
-                { resourceType: 'AMBULANCE', available: 2, total: 4 },
-            ],
         });
 
-        if (hospital) {
+        // 2. Create User account linked to the hospital
+        const user = await User.create({
+            hospitalId: hospital._id,
+            name: contactPerson || name,
+            email: cleanEmail,
+            password: password, // Hashed by UserSchema pre-save hook
+            role: 'HOSPITAL_ADMIN',
+            phone: contactPhone || '',
+            isActive: true,
+        });
+
+        // 3. Initialize default discrete inventories in V2 collections
+        const initialBloodStocks = [
+            { group: 'O+', quantity: 10 },
+            { group: 'O-', quantity: 4 },
+            { group: 'A+', quantity: 6 },
+            { group: 'B+', quantity: 5 },
+            { group: 'A-', quantity: 2 },
+            { group: 'B-', quantity: 2 },
+            { group: 'AB+', quantity: 3 },
+            { group: 'AB-', quantity: 1 },
+        ];
+
+        for (const item of initialBloodStocks) {
+            await BloodInventory.create({
+                hospitalId: hospital._id,
+                bloodGroup: item.group,
+                component: 'WHOLE_BLOOD',
+                unitsAvailable: item.quantity,
+                unitsReserved: 0,
+                unitsTotal: item.quantity,
+            }).catch(() => {});
+        }
+
+        const initialResources = [
+            { resourceType: 'ICU_BED', available: 5, total: 10 },
+            { resourceType: 'VENTILATOR', available: 3, total: 6 },
+            { resourceType: 'OXYGEN_CYLINDER', available: 20, total: 30 },
+            { resourceType: 'AMBULANCE', available: 2, total: 4 },
+        ];
+
+        for (const item of initialResources) {
+            await ResourceInventory.create({
+                hospitalId: hospital._id,
+                resourceType: item.resourceType,
+                available: item.available,
+                total: item.total,
+                reserved: 0,
+            }).catch(() => {});
+        }
+
+        if (hospital && user) {
             res.status(201).json({
                 _id: hospital._id,
+                userId: user._id,
+                hospitalId: hospital._id,
                 name: hospital.name,
+                hospitalName: hospital.name,
                 email: hospital.email,
+                role: user.role,
                 contactPhone: hospital.contactPhone,
                 contactPerson: hospital.contactPerson,
                 address: hospital.address,
                 location: hospital.location,
-                token: generateToken(hospital._id),
+                token: generateToken({
+                    id: hospital._id,
+                    userId: user._id,
+                    hospitalId: hospital._id,
+                }),
             });
         } else {
-            res.status(400).json({ message: 'Invalid hospital data' });
+            res.status(400).json({ message: 'Invalid hospital registration data' });
         }
     } catch (error) {
         res.status(500).json({ message: error.message });

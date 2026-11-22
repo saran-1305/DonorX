@@ -50,8 +50,9 @@ exports.processRequestMatching = async (requestId) => {
         const matches = await findMatchingHospitals(request);
 
         if (matches.length > 0) {
-            request.potentialMatches = matches;
-            await request.save();
+            await EmergencyRequest.findByIdAndUpdate(requestId, {
+                $set: { potentialMatches: matches },
+            });
             await createAuditLog(requestId, 'MATCHES_FOUND', { count: matches.length, hospitals: matches });
 
             await emitRequestToMatches(requestId);
@@ -72,10 +73,24 @@ exports.expandSearchRadius = async (requestId) => {
     const request = await EmergencyRequest.findById(requestId);
     if (!request || request.status !== 'Generated') return;
 
-    request.searchRadius += 5;
+    const currentIteration = request.iteration || 1;
+    const maxAllowed = request.maxIterations || 6;
+
+    if (currentIteration >= maxAllowed || (request.searchRadius || 5) >= 50) {
+        request.status = 'Ended';
+        await request.save();
+        await createAuditLog(requestId, 'MAX_RADIUS_REACHED_ENDED', {
+            finalRadius: request.searchRadius,
+            iterations: currentIteration,
+        });
+        return;
+    }
+
+    request.searchRadius = (request.searchRadius || 5) + 5;
+    request.iteration = currentIteration + 1;
     await request.save();
 
-    await createAuditLog(requestId, 'RADIUS_EXPANDED', { newRadius: request.searchRadius });
+    await createAuditLog(requestId, 'RADIUS_EXPANDED', { newRadius: request.searchRadius, iteration: request.iteration });
 
     await emitToHospital(request.requestingHospital, 'radius_expanded', {
         requestId,
@@ -137,41 +152,56 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         resourceCategory ||
         (['ICU_BED', 'VENTILATOR', 'OXYGEN_CYLINDER', 'AMBULANCE'].includes(type) ? 'RESOURCE' : type);
 
-    // ATOMIC RESERVATION ON DISCRETE V2 INVENTORIES
-    if (category === 'RESOURCE') {
-        const updatedRes = await ResourceInventory.findOneAndUpdate(
-            { hospitalId, resourceType: type, available: { $gte: quantity } },
-            { $inc: { available: -quantity, reserved: quantity } },
-            { new: true }
-        );
-        if (!updatedRes) {
-            throw new Error(`Insufficient ${type.replace(/_/g, ' ')} or conflicting reservation — need ${quantity}`);
-        }
-    } else if (category === 'BLOOD') {
-        const updatedBlood = await BloodInventory.findOneAndUpdate(
-            { hospitalId, bloodGroup: group, unitsAvailable: { $gte: quantity } },
-            { $inc: { unitsAvailable: -quantity, unitsReserved: quantity } },
-            { new: true }
-        );
-        if (!updatedBlood) {
-            throw new Error(`Insufficient ${group} Blood or units reserved concurrently — need ${quantity}`);
-        }
-    } else if (category === 'ORGAN') {
-        const organTypeUpper = (group || type).toUpperCase();
-        const updatedOrgan = await OrganInventory.findOneAndUpdate(
-            { hospitalId, organType: organTypeUpper, status: 'AVAILABLE' },
-            { $set: { status: 'RESERVED' } },
-            { new: true }
-        );
-        if (!updatedOrgan) {
-            throw new Error(`Organ ${group} is no longer available for reservation`);
-        }
+    // 1. ATOMIC REQUEST CLAIM: Guarantees only one hospital can accept a request concurrently
+    const claimedRequest = await EmergencyRequest.findOneAndUpdate(
+        { _id: requestId, status: 'Generated' },
+        { $set: { status: 'Pending', assignedHospital: hospitalId, potentialMatches: [] } },
+        { new: true }
+    );
+
+    if (!claimedRequest) {
+        throw new Error('Request already accepted by another hospital or is no longer available');
     }
 
-    request.status = 'Pending';
-    request.assignedHospital = hospitalId;
-    request.potentialMatches = [];
-    await request.save();
+    // 2. ATOMIC RESERVATION ON DISCRETE V2 INVENTORIES (Rolls back claim if insufficient stock)
+    try {
+        if (category === 'RESOURCE') {
+            const updatedRes = await ResourceInventory.findOneAndUpdate(
+                { hospitalId, resourceType: type, available: { $gte: quantity } },
+                { $inc: { available: -quantity, reserved: quantity } },
+                { new: true }
+            );
+            if (!updatedRes) {
+                throw new Error(`Insufficient ${type.replace(/_/g, ' ')} or conflicting reservation — need ${quantity}`);
+            }
+        } else if (category === 'BLOOD') {
+            const updatedBlood = await BloodInventory.findOneAndUpdate(
+                { hospitalId, bloodGroup: group, unitsAvailable: { $gte: quantity } },
+                { $inc: { unitsAvailable: -quantity, unitsReserved: quantity } },
+                { new: true }
+            );
+            if (!updatedBlood) {
+                throw new Error(`Insufficient ${group} Blood or units reserved concurrently — need ${quantity}`);
+            }
+        } else if (category === 'ORGAN') {
+            const organTypeUpper = (group || type).toUpperCase();
+            const updatedOrgan = await OrganInventory.findOneAndUpdate(
+                { hospitalId, organType: organTypeUpper, status: 'AVAILABLE' },
+                { $set: { status: 'RESERVED' } },
+                { new: true }
+            );
+            if (!updatedOrgan) {
+                throw new Error(`Organ ${group} is no longer available for reservation`);
+            }
+        }
+    } catch (reservationError) {
+        // Safe rollback: restore request to Generated state
+        await EmergencyRequest.updateOne(
+            { _id: requestId },
+            { $set: { status: 'Generated', assignedHospital: null, potentialMatches: request.potentialMatches } }
+        );
+        throw reservationError;
+    }
 
     await createAuditLog(requestId, 'REQUEST_ACCEPTED', { hospitalId, name: hospital.name });
 

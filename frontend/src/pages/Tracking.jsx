@@ -236,11 +236,13 @@ const Tracking = () => {
                         </div>
                     </div>
                     <div className="flex gap-sm">
-                        <button onClick={cancelRequest} className="btn" style={{ border: '1px solid var(--border-color)', color: 'var(--danger)' }}>
-                            Cancel
+                        <button onClick={cancelRequest} className="btn" style={{ border: '1px solid var(--border-color)', color: 'var(--danger)', fontWeight: '600' }}>
+                            End
                         </button>
                         {activeRequest?.status === 'Pending' && (
-                            <button onClick={completeRequest} className="btn btn-primary">Mark Delivered</button>
+                            <button onClick={completeRequest} className="btn btn-primary" style={{ background: '#059669', borderColor: '#059669', fontWeight: '600' }}>
+                                Success
+                            </button>
                         )}
                     </div>
                 </div>

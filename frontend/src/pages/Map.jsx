@@ -31,7 +31,7 @@ const coordsFromHospital = (hospital) => {
 };
 
 const MapPage = () => {
-    const { user } = useDonor();
+    const { user, showToast } = useDonor();
     const [searchParams, setSearchParams] = useSearchParams();
     const requestId = searchParams.get('request');
 
@@ -312,6 +312,42 @@ const MapPage = () => {
         return () => { cancelled = true; };
     }, [requestId, mapInitialized, showAcceptedRequestRoute]);
 
+    const isRequestor = acceptedRequest && (
+        String(acceptedRequest.requestingHospital?._id || acceptedRequest.requestingHospital) === String(user?._id)
+    );
+
+    const formatRequired = (req) => {
+        if (!req?.resourceNeeded) return '—';
+        const { type, group, quantity } = req.resourceNeeded;
+        if (type === 'BLOOD') return `${quantity} unit(s) of ${group} Blood`;
+        if (type === 'ORGAN') return `${quantity} x ${group || type}`;
+        return `${quantity} x ${type.replace(/_/g, ' ')}`;
+    };
+
+    const handleSuccessRequest = async () => {
+        if (!acceptedRequest?._id) return;
+        try {
+            await requestService.updateStatus(acceptedRequest._id, 'Completed');
+            if (showToast) showToast('Request marked as Completed (Success)!', 'success');
+            setAcceptedRequest((prev) => ({ ...prev, status: 'Completed' }));
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to update request status';
+            if (showToast) showToast(`Failed: ${msg}`, 'error');
+        }
+    };
+
+    const handleEndRequest = async () => {
+        if (!acceptedRequest?._id) return;
+        try {
+            await requestService.updateStatus(acceptedRequest._id, 'Ended');
+            if (showToast) showToast('Request marked as Ended.', 'info');
+            setAcceptedRequest((prev) => ({ ...prev, status: 'Ended' }));
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to update request status';
+            if (showToast) showToast(`Failed: ${msg}`, 'error');
+        }
+    };
+
     return (
         <div className="chih-page chih-page-full">
             <div className="chih-map-wrap">
@@ -329,7 +365,9 @@ const MapPage = () => {
                     <div className="chih-panel">
                         <div className="chih-panel-header">
                             <h2>Accepted Request Route</h2>
-                            <span className="chih-panel-tag chih-status-ok">Pending</span>
+                            <span className={`chih-panel-tag ${acceptedRequest.status === 'Completed' ? 'chih-status-ok' : acceptedRequest.status === 'Ended' ? 'chih-status-warn' : 'chih-status-ok'}`}>
+                                {acceptedRequest.status}
+                            </span>
                         </div>
                         <p className="chih-muted" style={{ marginBottom: '0.75rem' }}>
                             Optimal driving route between the supplying and requesting hospitals.
@@ -353,7 +391,55 @@ const MapPage = () => {
                                     <span>{acceptedRequest.patientName}</span>
                                 </div>
                             </li>
+                            {acceptedRequest.resourceNeeded && (
+                                <li>
+                                    <div>
+                                        <label>Required Resource</label>
+                                        <span>{formatRequired(acceptedRequest)}</span>
+                                    </div>
+                                </li>
+                            )}
                         </div>
+
+                        {/* Requesting Hospital Control Buttons */}
+                        {isRequestor && acceptedRequest.status === 'Pending' && (
+                            <div style={{ marginTop: '1.25rem', padding: '1rem', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                <h3 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.35rem', color: '#1E293B' }}>Request Actions</h3>
+                                <p style={{ fontSize: '0.8rem', color: '#64748B', marginBottom: '1rem' }}>
+                                    As the hospital that raised this request, complete or terminate the operation:
+                                </p>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleEndRequest}
+                                        className="btn btn-secondary"
+                                        style={{ flex: 1, borderColor: '#EF4444', color: '#DC2626', fontWeight: '600' }}
+                                    >
+                                        End
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSuccessRequest}
+                                        className="btn btn-primary"
+                                        style={{ flex: 1, background: '#059669', borderColor: '#059669', fontWeight: '600' }}
+                                    >
+                                        Success
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {acceptedRequest.status === 'Completed' && (
+                            <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0', borderRadius: '6px', fontWeight: '600', textAlign: 'center' }}>
+                                ✓ Request Completed (Success)
+                            </div>
+                        )}
+
+                        {acceptedRequest.status === 'Ended' && (
+                            <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: '6px', fontWeight: '600', textAlign: 'center' }}>
+                                ✕ Request Ended
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="chih-panel">
