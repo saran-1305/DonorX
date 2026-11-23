@@ -13,13 +13,17 @@ const initIO = (httpServer) => {
     io.on('connection', (socket) => {
         socket.on('join_hospital', (hospitalId) => {
             if (hospitalId) {
-                socket.join(String(hospitalId));
+                const room = String(hospitalId);
+                socket.join(room);
+                console.log(`Socket [${socket.id}] joined hospital room [${room}]`);
             }
         });
 
         socket.on('join_request', (requestId) => {
             if (requestId) {
-                socket.join(`request_${requestId}`);
+                const room = `request_${requestId}`;
+                socket.join(room);
+                console.log(`Socket [${socket.id}] joined request room [${room}]`);
             }
         });
 

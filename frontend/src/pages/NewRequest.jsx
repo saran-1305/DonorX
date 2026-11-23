@@ -386,13 +386,16 @@ const NewRequest = () => {
         const poll = setInterval(async () => {
             try {
                 const { data } = await requestService.getById(createdRequestId);
-                if (data?.searchRadius) {
+                if (data?.status === 'Pending' && data.assignedHospital) {
+                    clearInterval(poll);
+                    onAccepted(data);
+                } else if (data?.searchRadius) {
                     setSimDistance(`${data.searchRadius} KM Radius`);
                 }
             } catch {
                 // ignore
             }
-        }, 10000);
+        }, 3000);
 
         return () => {
             socket.off('radius_expanded', onRadiusExpanded);

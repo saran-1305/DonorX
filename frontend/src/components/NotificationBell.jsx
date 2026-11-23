@@ -14,7 +14,7 @@ const TYPE_LABELS = {
 };
 
 const NotificationBell = () => {
-    const { user } = useDonor();
+    const { user, showToast } = useDonor();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
@@ -43,10 +43,13 @@ const NotificationBell = () => {
                 return [n, ...prev].slice(0, 30);
             });
             setUnreadCount((c) => c + 1);
+            if (n.type === 'ACCEPTED' || n.type === 'EMERGENCY') {
+                showToast(`${n.title}: ${n.message}`, n.type === 'ACCEPTED' ? 'success' : 'info');
+            }
         };
         socket.on('notification', onNotification);
         return () => socket.off('notification', onNotification);
-    }, [user?._id]);
+    }, [user?._id, showToast]);
 
     useEffect(() => {
         const handleClick = (e) => {

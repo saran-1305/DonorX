@@ -209,17 +209,27 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         .populate('assignedHospital', 'name location email')
         .populate('requestingHospital', 'name location email');
 
+    // 1. Emit to requesting hospital personal room
     await emitToHospital(request.requestingHospital, 'request_accepted', updatedRequest);
+    // 2. Emit to accepting hospital personal room
     await emitToHospital(hospitalId, 'request_accepted', updatedRequest);
+    // 3. Emit to request-specific room (joined by NewRequest.jsx)
+    ioEmitRequestRoom(requestId, 'request_accepted', updatedRequest);
+
+    // 4. Global broadcast so client-side listeners catch it reliably even across reconnects
+    const io = getIO();
+    if (io) {
+        io.emit('request_accepted', updatedRequest);
+    }
 
     const routeLink = `/map?request=${requestId}`;
 
     await createNotification(request.requestingHospital, {
         type: 'ACCEPTED',
-        title: 'Request accepted',
+        title: 'Emergency Request Accepted!',
         message: `${hospital.name} accepted your emergency request`,
         link: routeLink,
-        metadata: { requestId, hospitalId },
+        metadata: { requestId, hospitalId, acceptedBy: hospital.name },
     });
 
     await createNotification(hospitalId, {
