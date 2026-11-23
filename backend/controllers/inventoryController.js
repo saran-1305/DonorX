@@ -85,6 +85,11 @@ exports.updateInventory = async (req, res) => {
                         },
                         { upsert: true }
                     );
+                } else {
+                    await OrganInventory.updateMany(
+                        { hospitalId, organType: organTypeUpper, status: 'AVAILABLE' },
+                        { $set: { status: 'TRANSPLANTED' } }
+                    );
                 }
             }
         }

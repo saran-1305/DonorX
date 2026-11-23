@@ -46,38 +46,59 @@ exports.getResources = async (req, res) => {
     }
 };
 
-// @desc    Update resource available count
+// @desc    Update resource available count (supports single item or batch items array)
 // @route   PUT /api/resources
 // @access  Private
 exports.updateResources = async (req, res) => {
-    const { resourceType, available } = req.body;
-
-    if (!resourceType || !VALID_RESOURCE_TYPES.includes(resourceType)) {
-        return res.status(400).json({
-            message: 'Invalid resourceType. Must be one of: ICU_BED, VENTILATOR, OXYGEN_CYLINDER, AMBULANCE',
-        });
-    }
-
-    if (typeof available !== 'number' || available < 0) {
-        return res.status(400).json({ message: 'available must be a non-negative number' });
-    }
-
     try {
         const hospitalId = req.user._id;
 
-        const updated = await ResourceInventory.findOneAndUpdate(
-            { hospitalId, resourceType },
-            {
-                $set: { available },
-                $setOnInsert: { hospitalId, resourceType, total: available, reserved: 0 },
-            },
-            { upsert: true, new: true }
-        );
+        const items = Array.isArray(req.body.items) && req.body.items.length > 0
+            ? req.body.items
+            : [req.body];
 
-        res.json({
-            message: `${resourceType} available count updated to ${available}`,
-            resource: updated,
-        });
+        const updatedList = [];
+
+        for (const item of items) {
+            const { resourceType, available, total } = item;
+            if (!resourceType || !VALID_RESOURCE_TYPES.includes(resourceType)) {
+                continue;
+            }
+            if (typeof available !== 'number' || available < 0) {
+                continue;
+            }
+
+            const updateFields = { available };
+            const insertFields = { hospitalId, resourceType, reserved: 0 };
+
+            if (typeof total === 'number' && total >= available) {
+                updateFields.total = total;
+            } else {
+                insertFields.total = Math.max(available, 10);
+            }
+
+            const updated = await ResourceInventory.findOneAndUpdate(
+                { hospitalId, resourceType },
+                {
+                    $set: updateFields,
+                    $setOnInsert: insertFields,
+                },
+                { upsert: true, new: true }
+            );
+            if (updated) {
+                updatedList.push(updated);
+            }
+        }
+
+        // Return single response format if called with legacy non-array body
+        if (!Array.isArray(req.body.items) && updatedList.length === 1) {
+            return res.json({
+                message: `${updatedList[0].resourceType} available count updated to ${updatedList[0].available}`,
+                resource: updatedList[0],
+            });
+        }
+
+        return exports.getResources(req, res);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
