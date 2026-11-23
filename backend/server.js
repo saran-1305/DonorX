@@ -24,10 +24,10 @@ const logger = winston.createLogger({
 });
 
 const connectDB = async () => {
-    const uri = process.env.ATLAS_MONGO_URI || process.env.MONGO_URI;
+    const uri = process.env.MONGO_URI || process.env.ATLAS_MONGO_URI || 'mongodb://127.0.0.1:27017/donorx';
 
     if (!uri) {
-        logger.error('MongoDB URI is not configured. Set ATLAS_MONGO_URI or MONGO_URI in backend/.env.');
+        logger.error('MongoDB URI is not configured. Set MONGO_URI in backend/.env.');
         process.exit(1);
         return;
     }

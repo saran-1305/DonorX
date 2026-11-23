@@ -9,6 +9,7 @@ import NewRequest from './pages/NewRequest';
 import MapPage from './pages/Map';
 import Messages from './pages/Messages';
 import Dashboard from './pages/Dashboard';
+import Billing from './pages/Billing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { DonorProvider, useDonor } from './context/DonorContext';
@@ -47,6 +48,7 @@ function App() {
                         <Route path="inventory" element={<Inventory />} />
                         <Route path="social" element={<Social />} />
                         <Route path="messages" element={<Messages />} />
+                        <Route path="billing" element={<Billing />} />
                         <Route path="map" element={<MapPage />} />
                         <Route path="tracking" element={<Navigate to="/map" replace />} />
                         <Route path="dashboard" element={<Dashboard />} />

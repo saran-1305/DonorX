@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { schemas } = require('./v2');
+const BillSchema = require('./v2/Bill');
 
 // Compile or retrieve from the default mongoose connection
 const getModel = (name, schema, collection) => {
@@ -23,4 +24,5 @@ module.exports = {
     AuditLog: getModel('AuditLog', schemas.AuditLogSchema, 'auditlogs'),
     MedicalReport: getModel('MedicalReport', schemas.MedicalReportSchema, 'medical_reports'),
     AIInsight: getModel('AIInsight', schemas.AIInsightSchema, 'ai_insights'),
+    Bill: getModel('Bill', BillSchema, 'bills'),
 };

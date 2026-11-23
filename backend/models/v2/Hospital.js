@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const HospitalSchema = new mongoose.Schema(
     {
@@ -23,6 +24,10 @@ const HospitalSchema = new mongoose.Schema(
             unique: true,
             lowercase: true,
             trim: true,
+        },
+        password: {
+            type: String,
+            default: '',
         },
         contactPhone: {
             type: String,
@@ -53,6 +58,14 @@ const HospitalSchema = new mongoose.Schema(
                 required: true,
             },
         },
+        inventory: {
+            type: Array,
+            default: [],
+        },
+        resources: {
+            type: Array,
+            default: [],
+        },
         isActive: {
             type: Boolean,
             default: true,
@@ -65,5 +78,10 @@ const HospitalSchema = new mongoose.Schema(
 );
 
 HospitalSchema.index({ location: '2dsphere' });
+
+HospitalSchema.methods.matchPassword = async function (enteredPassword) {
+    if (!this.password) return false;
+    return await bcrypt.compare(enteredPassword, this.password);
+};
 
 module.exports = HospitalSchema;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
 import Modal from '../components/Modal';
 import { requestService } from '../services/api';
@@ -6,9 +7,11 @@ import { getSocket } from '../services/socket';
 
 const Dashboard = () => {
     const { getAuditLogsForRequest, showToast, formatDate } = useDonor();
+    const navigate = useNavigate();
 
     const [outgoingRequests, setOutgoingRequests] = useState([]);
     const [incomingRequests, setIncomingRequests] = useState([]);
+    const [assignedRequests, setAssignedRequests] = useState([]);
 
     const activeRequests = outgoingRequests.length;
     const criticalRequests = outgoingRequests.filter(r => r.urgency === 'Critical' || r.urgency === 'High').length;
@@ -19,12 +22,14 @@ const Dashboard = () => {
 
     const fetchAll = useCallback(async () => {
         try {
-            const [myRes, incRes] = await Promise.all([
+            const [myRes, incRes, assRes] = await Promise.all([
                 requestService.getMyRequests(),
-                requestService.getIncoming()
+                requestService.getIncoming(),
+                requestService.getAssigned(),
             ]);
             setOutgoingRequests(Array.isArray(myRes.data) ? myRes.data : []);
             setIncomingRequests(Array.isArray(incRes.data) ? incRes.data : []);
+            setAssignedRequests(Array.isArray(assRes.data) ? assRes.data : []);
         } catch (e) {
             console.error('Dashboard fetch error:', e);
         }
@@ -47,18 +52,27 @@ const Dashboard = () => {
         };
 
         const onRequestAccepted = (request) => {
-            setOutgoingRequests((prev) =>
-                prev.map((r) => (r._id === request._id ? request : r))
-            );
-            showToast('Your request was accepted!', 'success');
+            fetchAll();
+            showToast('Emergency request updated (Accepted)!', 'success');
+        };
+
+        const onRequestStatusUpdated = (request) => {
+            fetchAll();
+            if (request.status === 'Completed') {
+                showToast(`🎉 Request for ${request.patientName} marked as Completed (Success)!`, 'success');
+            }
         };
 
         socket.on('new_request', onNewRequest);
         socket.on('request_accepted', onRequestAccepted);
+        socket.on('request_status_updated', onRequestStatusUpdated);
+        socket.on('request_completed', onRequestStatusUpdated);
 
         return () => {
             socket.off('new_request', onNewRequest);
             socket.off('request_accepted', onRequestAccepted);
+            socket.off('request_status_updated', onRequestStatusUpdated);
+            socket.off('request_completed', onRequestStatusUpdated);
         };
     }, [fetchAll, showToast]);
 
@@ -200,6 +214,73 @@ const Dashboard = () => {
                                     <td><span className={`badge ${getUrgencyClass(req.urgency)}`}>{req.urgency}</span></td>
                                     <td><span className={`badge ${getStatusClass(req.status)}`}>{req.status}</span></td>
                                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{formatDate(req.createdAt)}</td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Accepted Emergencies (Fulfilling by Your Hospital) */}
+            <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#059669' }}></span>
+                    Accepted Emergencies (Fulfilling by Your Hospital)
+                </h3>
+            </div>
+            <div className="card table-container animate-fade-in" style={{ padding: 0, marginBottom: '3rem' }}>
+                <table className="interactive-table">
+                    <thead>
+                        <tr>
+                            <th>Request ID</th>
+                            <th>Patient</th>
+                            <th>Resource</th>
+                            <th>Requesting Hospital</th>
+                            <th>Status</th>
+                            <th>Actions & Bill</th>
+                            <th>Accepted / Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {assignedRequests.length === 0 ? (
+                            <tr>
+                                <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    No requests currently accepted or assigned to your hospital.
+                                </td>
+                            </tr>
+                        ) : (
+                            assignedRequests.map(req => (
+                                <tr key={req._id}>
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 500 }}>{req.requestId || req._id}</td>
+                                    <td style={{ fontWeight: 600 }}>{req.patientName}</td>
+                                    <td>{req.resourceNeeded ? `${req.resourceNeeded.type}: ${req.resourceNeeded.group} (x${req.resourceNeeded.quantity})` : '—'}</td>
+                                    <td>{req.requestingHospital?.name || 'Unknown Hospital'}</td>
+                                    <td>
+                                        <span className={`badge ${req.status === 'Completed' ? 'badge-success' : req.status === 'Ended' ? 'badge-critical' : 'badge-matched'}`}>
+                                            {req.status === 'Completed' ? '✓ Completed (Success)' : req.status}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`/map?request=${req._id}`)}
+                                                className="btn btn-sm"
+                                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', border: '1px solid #CBD5E1' }}
+                                            >
+                                                Map Route
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`/billing?request=${req._id}`)}
+                                                className="btn btn-sm btn-primary"
+                                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                            >
+                                                Bill & Rate
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{formatDate(req.updatedAt || req.createdAt)}</td>
                                 </tr>
                             ))
                         )}

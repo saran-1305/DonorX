@@ -163,7 +163,7 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         throw new Error('Request already accepted by another hospital or is no longer available');
     }
 
-    // 2. ATOMIC RESERVATION ON DISCRETE V2 INVENTORIES (Rolls back claim if insufficient stock)
+    // 2. ATOMIC RESERVATION ON DISCRETE V2 INVENTORIES (With Hospital inventory fallback)
     try {
         if (category === 'RESOURCE') {
             const updatedRes = await ResourceInventory.findOneAndUpdate(
@@ -172,7 +172,17 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
                 { new: true }
             );
             if (!updatedRes) {
-                throw new Error(`Insufficient ${type.replace(/_/g, ' ')} or conflicting reservation — need ${quantity}`);
+                // Fallback to embedded Hospital.resources array
+                const hosp = await Hospital.findById(hospitalId);
+                const resItem = hosp?.resources?.find((r) => r.resourceType === type);
+                if (resItem && resItem.available >= quantity) {
+                    resItem.available -= quantity;
+                    await hosp.save();
+                } else if (!hosp?.resources?.length) {
+                    console.log(`Allowing resource acceptance for ${hospital.name} (fallback)`);
+                } else {
+                    throw new Error(`Insufficient ${type.replace(/_/g, ' ')} or conflicting reservation — need ${quantity}`);
+                }
             }
         } else if (category === 'BLOOD') {
             const updatedBlood = await BloodInventory.findOneAndUpdate(
@@ -181,7 +191,17 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
                 { new: true }
             );
             if (!updatedBlood) {
-                throw new Error(`Insufficient ${group} Blood or units reserved concurrently — need ${quantity}`);
+                // Fallback to embedded Hospital.inventory array
+                const hosp = await Hospital.findById(hospitalId);
+                const bloodItem = hosp?.inventory?.find((i) => i.type === 'BLOOD' && i.group === group);
+                if (bloodItem && bloodItem.quantity >= quantity) {
+                    bloodItem.quantity -= quantity;
+                    await hosp.save();
+                } else if (!hosp?.inventory?.length || !hosp.inventory.some((i) => i.type === 'BLOOD')) {
+                    console.log(`Allowing blood acceptance for ${hospital.name} (fallback)`);
+                } else {
+                    throw new Error(`Insufficient ${group} Blood or units reserved concurrently — need ${quantity}`);
+                }
             }
         } else if (category === 'ORGAN') {
             const organTypeUpper = (group || type).toUpperCase();
@@ -191,7 +211,19 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
                 { new: true }
             );
             if (!updatedOrgan) {
-                throw new Error(`Organ ${group} is no longer available for reservation`);
+                // Fallback to embedded Hospital.inventory array
+                const hosp = await Hospital.findById(hospitalId);
+                const organItem = hosp?.inventory?.find(
+                    (i) => i.type === 'ORGAN' && (i.group || '').toUpperCase() === organTypeUpper
+                );
+                if (organItem && organItem.quantity >= quantity) {
+                    organItem.quantity -= quantity;
+                    await hosp.save();
+                } else if (!hosp?.inventory?.length || !hosp.inventory.some((i) => i.type === 'ORGAN')) {
+                    console.log(`Allowing organ acceptance for ${hospital.name} (fallback)`);
+                } else {
+                    throw new Error(`Organ ${group} is no longer available for reservation`);
+                }
             }
         }
     } catch (reservationError) {
@@ -246,6 +278,13 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         console.error('Transport start error (non-critical):', transportErr.message);
     }
 
+    try {
+        const { generateBillForRequest } = require('./billService');
+        await generateBillForRequest(requestId, null, hospitalId);
+    } catch (billErr) {
+        console.error('Initial bill generation error (non-critical):', billErr.message);
+    }
+
     return updatedRequest;
 };
 
@@ -265,6 +304,72 @@ exports.updateLifecycle = async (requestId, status, locationData) => {
     await request.save();
 
     await createAuditLog(requestId, `STATUS_UPDATE_${status.toUpperCase()}`, { location: locationData });
+
+    const populated = await EmergencyRequest.findById(requestId)
+        .populate('requestingHospital', 'name location email contactPhone address')
+        .populate('assignedHospital', 'name location email contactPhone address');
+
+    const reqHospId = populated.requestingHospital?._id || populated.requestingHospital;
+    const assHospId = populated.assignedHospital?._id || populated.assignedHospital;
+
+    // Real-time Socket.io dispatch
+    if (reqHospId) {
+        await emitToHospital(reqHospId, 'request_status_updated', populated);
+        if (status === 'Completed') {
+            await emitToHospital(reqHospId, 'request_completed', populated);
+        }
+    }
+    if (assHospId) {
+        await emitToHospital(assHospId, 'request_status_updated', populated);
+        if (status === 'Completed') {
+            await emitToHospital(assHospId, 'request_completed', populated);
+        }
+    }
+    ioEmitRequestRoom(requestId, 'request_status_updated', populated);
+    if (status === 'Completed') {
+        ioEmitRequestRoom(requestId, 'request_completed', populated);
+    }
+
+    const io = getIO();
+    if (io) {
+        io.emit('request_status_updated', populated);
+        if (status === 'Completed') {
+            io.emit('request_completed', populated);
+        }
+    }
+
+    // In-app Notifications
+    if (reqHospId && assHospId) {
+        const reqName = populated.requestingHospital.name || 'Requesting Hospital';
+        const assName = populated.assignedHospital.name || 'Fulfilling Hospital';
+
+        if (status === 'Completed') {
+            await createNotification(assHospId, {
+                type: 'COMPLETED',
+                title: 'Emergency Request Completed (Success)!',
+                message: `${reqName} confirmed successful delivery and completed the request.`,
+                link: `/map?request=${requestId}`,
+                metadata: { requestId, status: 'Completed' },
+            });
+            await createNotification(reqHospId, {
+                type: 'COMPLETED',
+                title: 'Request Marked Completed',
+                message: `You marked the delivery from ${assName} as Completed (Success).`,
+                link: `/map?request=${requestId}`,
+                metadata: { requestId, status: 'Completed' },
+            });
+        } else if (status === 'Ended') {
+            await createNotification(assHospId, {
+                type: 'ENDED',
+                title: 'Request Ended',
+                message: `The request with ${reqName} was ended.`,
+                link: `/map?request=${requestId}`,
+                metadata: { requestId, status: 'Ended' },
+            });
+        }
+    }
+
+    return populated;
 };
 
 exports.handleTimeout = async (requestId) => {

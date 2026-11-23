@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
-import { notificationService, chatService } from '../services/api';
+import { notificationService, chatService, billService } from '../services/api';
 import { getSocket } from '../services/socket';
 
 const IconDashboard = () => (
@@ -45,6 +45,12 @@ const IconMap = () => (
 const IconMessages = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+);
+const IconBilling = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="2" y="4" width="20" height="16" rx="2" />
+        <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
 );
 const IconAlert = () => (
@@ -95,6 +101,7 @@ const Sidebar = () => {
     const navigate = useNavigate();
     const [unread, setUnread] = useState(0);
     const [msgUnread, setMsgUnread] = useState(0);
+    const [billCount, setBillCount] = useState(0);
 
     useEffect(() => {
         if (!user) return;
@@ -104,9 +111,17 @@ const Sidebar = () => {
         const refreshMessages = () => chatService.getUnreadCount()
             .then(({ data }) => setMsgUnread(data.count || 0))
             .catch(() => {});
+        const refreshBills = () => billService.getBills()
+            .then(({ data }) => {
+                const list = Array.isArray(data) ? data : [];
+                const activeOrPending = list.filter((b) => b.status === 'Active').length;
+                setBillCount(activeOrPending);
+            })
+            .catch(() => {});
 
         refreshAlerts();
         refreshMessages();
+        refreshBills();
 
         const socket = getSocket();
         const onChatMsg = (msg) => {
@@ -116,9 +131,18 @@ const Sidebar = () => {
         };
         socket.on('notification', refreshAlerts);
         socket.on('chat_message', onChatMsg);
+        socket.on('bill_created', refreshBills);
+        socket.on('bill_updated', refreshBills);
+        socket.on('bill_completed', refreshBills);
+        socket.on('bill_terminated', refreshBills);
+
         return () => {
             socket.off('notification', refreshAlerts);
             socket.off('chat_message', onChatMsg);
+            socket.off('bill_created', refreshBills);
+            socket.off('bill_updated', refreshBills);
+            socket.off('bill_completed', refreshBills);
+            socket.off('bill_terminated', refreshBills);
         };
     }, [user?._id]);
 
@@ -150,6 +174,7 @@ const Sidebar = () => {
                 <NavItem to="/inventory?tab=resource" icon={<IconResource />} label="Resource Hub" matchTab="resource" />
                 <NavItem to="/social" icon={<IconSocial />} label="Hospital Network" />
                 <NavItem to="/messages" icon={<IconMessages />} label="Messages" badge={msgUnread} />
+                <NavItem to="/billing" icon={<IconBilling />} label="Billing & Invoices" badge={billCount} />
                 <NavItem to="/map" icon={<IconMap />} label="Map" />
 
                 <div className="sidebar-section-label">SYSTEM</div>

@@ -278,8 +278,24 @@ exports.getIncomingRequests = async (req, res) => {
             status: 'Generated',
             potentialMatches: { $in: [req.user._id] },
         })
-            .populate('requestingHospital', 'name location')
+            .populate('requestingHospital', 'name location email contactPhone')
             .sort({ priorityScore: -1 }); // High priority first
+
+        res.json(requests);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get requests assigned to / accepted by this hospital (Hospital B view)
+// @route   GET /api/requests/assigned
+// @access  Private
+exports.getAssignedRequests = async (req, res) => {
+    try {
+        const requests = await EmergencyRequest.find({ assignedHospital: req.user._id })
+            .populate('requestingHospital', 'name location email contactPhone address')
+            .populate('assignedHospital', 'name location email contactPhone address')
+            .sort({ updatedAt: -1, createdAt: -1 });
 
         res.json(requests);
     } catch (error) {
@@ -340,13 +356,13 @@ exports.updateRequestStatus = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to update this request status' });
         }
 
-        await updateLifecycle(requestId, status, location);
+        const updatedRequest = await updateLifecycle(requestId, status, location);
         if (status === 'Completed') {
             await completeTransport(requestId);
         } else if (status === 'Ended') {
             await cancelTransport(requestId);
         }
-        res.json({ message: `Request status updated to ${status}` });
+        res.json({ message: `Request status updated to ${status}`, request: updatedRequest });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }

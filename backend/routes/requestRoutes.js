@@ -5,6 +5,7 @@ const {
     getRequestById,
     getMyRequests,
     getIncomingRequests,
+    getAssignedRequests,
     respondToRequest,
     updateRequestStatus,
     getTransport,
@@ -15,6 +16,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 router.post('/', protect, asyncHandler(createRequest));
 router.get('/my', protect, asyncHandler(getMyRequests));
 router.get('/incoming', protect, asyncHandler(getIncomingRequests));
+router.get('/assigned', protect, asyncHandler(getAssignedRequests));
 router.get('/:id/transport', protect, asyncHandler(getTransport));
 router.get('/:id', protect, asyncHandler(getRequestById));
 router.post('/:id/respond', protect, asyncHandler(respondToRequest));

@@ -114,9 +114,20 @@ export const requestService = {
     create: (data) => api.post('/requests', data),
     getMyRequests: () => api.get('/requests/my'),
     getIncoming: () => api.get('/requests/incoming'),
+    getAssigned: () => api.get('/requests/assigned'),
     respond: (id, response) => api.post(`/requests/${id}/respond`, { response }),
     updateStatus: (id, status, location) => api.put(`/requests/${id}/status`, { status, location }),
     getTransport: (id) => api.get(`/requests/${id}/transport`),
+};
+
+export const billService = {
+    getBills: (params) => api.get('/bills', { params }),
+    getById: (id) => api.get(`/bills/${id}`),
+    getByRequestId: (requestId) => api.get(`/bills/request/${requestId}`),
+    generate: (requestId, customRate) => api.post('/bills/generate', { requestId, customRate }),
+    updateRate: (id, unitRate) => api.put(`/bills/${id}/rate`, { unitRate }),
+    complete: (id, note) => api.put(`/bills/${id}/complete`, { note }),
+    terminate: (id, note) => api.put(`/bills/${id}/terminate`, { note }),
 };
 
 export default api;

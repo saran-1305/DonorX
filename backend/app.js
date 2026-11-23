@@ -70,6 +70,9 @@ app.use('/api/chat', chatRoutes);
 const routeRoutes = require('./routes/routeRoutes');
 app.use('/api/routes', routeRoutes);
 
+const billRoutes = require('./routes/billRoutes');
+app.use('/api/bills', billRoutes);
+
 app.use((err, req, res, next) => {
     if (res.headersSent) {
         if (typeof next === 'function') {

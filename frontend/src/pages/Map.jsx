@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDonor } from '../context/DonorContext';
-import { hospitalService, requestService } from '../services/api';
+import { hospitalService, requestService, billService } from '../services/api';
 import api from '../services/api';
+import { getSocket } from '../services/socket';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { createLeafletMap, destroyLeafletMap, addStandardTileLayer } from '../utils/leafletMap';
@@ -32,6 +33,7 @@ const coordsFromHospital = (hospital) => {
 
 const MapPage = () => {
     const { user, showToast } = useDonor();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const requestId = searchParams.get('request');
 
@@ -49,6 +51,12 @@ const MapPage = () => {
     const [loading, setLoading] = useState(true);
     const [acceptedRequest, setAcceptedRequest] = useState(null);
     const [mapInitialized, setMapInitialized] = useState(false);
+
+    // Bill state for the transaction
+    const [transactionBill, setTransactionBill] = useState(null);
+    const [isEditingRate, setIsEditingRate] = useState(false);
+    const [customRateInput, setCustomRateInput] = useState('');
+    const [savingRate, setSavingRate] = useState(false);
 
     const myLat = user?.location?.coordinates?.[1];
     const myLng = user?.location?.coordinates?.[0];
@@ -296,6 +304,19 @@ const MapPage = () => {
         }, 150);
     }, [hospitals, loading, hasOrigin, myLat, myLng, user?._id, requestId, routeInfo, mapInitialized]);
 
+    const fetchBillForRequest = useCallback(async (reqId) => {
+        if (!reqId) return;
+        try {
+            const { data } = await billService.getByRequestId(reqId);
+            setTransactionBill(data);
+            if (data?.unitRate) {
+                setCustomRateInput(String(data.unitRate));
+            }
+        } catch (e) {
+            console.error('Error fetching transaction bill:', e);
+        }
+    }, []);
+
     useEffect(() => {
         if (!requestId || !mapInitialized) return;
 
@@ -303,17 +324,60 @@ const MapPage = () => {
         requestService.getById(requestId)
             .then(({ data }) => {
                 if (cancelled || !data) return;
-                if (data.status === 'Pending' && data.assignedHospital && data.requestingHospital) {
+                if (['Pending', 'Completed', 'Ended'].includes(data.status) && data.assignedHospital && data.requestingHospital) {
                     showAcceptedRequestRoute(data);
+                    fetchBillForRequest(data._id);
                 }
             })
             .catch(console.error);
 
-        return () => { cancelled = true; };
-    }, [requestId, mapInitialized, showAcceptedRequestRoute]);
+        const socket = getSocket();
+
+        const onStatusUpdated = (updatedReq) => {
+            if (String(updatedReq?._id) === String(requestId)) {
+                setAcceptedRequest(updatedReq);
+                if (updatedReq.status === 'Completed') {
+                    showToast('🎉 Emergency request completed successfully (Success)!', 'success');
+                } else if (updatedReq.status === 'Ended') {
+                    showToast('Emergency request was ended.', 'info');
+                }
+                fetchBillForRequest(requestId);
+            }
+        };
+
+        const onBillUpdated = (updatedBill) => {
+            if (String(updatedBill?.requestId) === String(requestId) || String(updatedBill?._id) === String(transactionBill?._id)) {
+                setTransactionBill(updatedBill);
+                if (updatedBill.unitRate) {
+                    setCustomRateInput(String(updatedBill.unitRate));
+                }
+            }
+        };
+
+        socket.on('request_status_updated', onStatusUpdated);
+        socket.on('request_completed', onStatusUpdated);
+        socket.on('bill_created', onBillUpdated);
+        socket.on('bill_updated', onBillUpdated);
+        socket.on('bill_completed', onBillUpdated);
+        socket.on('bill_terminated', onBillUpdated);
+
+        return () => {
+            cancelled = true;
+            socket.off('request_status_updated', onStatusUpdated);
+            socket.off('request_completed', onStatusUpdated);
+            socket.off('bill_created', onBillUpdated);
+            socket.off('bill_updated', onBillUpdated);
+            socket.off('bill_completed', onBillUpdated);
+            socket.off('bill_terminated', onBillUpdated);
+        };
+    }, [requestId, mapInitialized, showAcceptedRequestRoute, fetchBillForRequest, showToast, transactionBill?._id]);
 
     const isRequestor = acceptedRequest && (
         String(acceptedRequest.requestingHospital?._id || acceptedRequest.requestingHospital) === String(user?._id)
+    );
+
+    const isProvider = acceptedRequest && (
+        String(acceptedRequest.assignedHospital?._id || acceptedRequest.assignedHospital) === String(user?._id)
     );
 
     const formatRequired = (req) => {
@@ -345,6 +409,52 @@ const MapPage = () => {
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to update request status';
             if (showToast) showToast(`Failed: ${msg}`, 'error');
+        }
+    };
+
+    const handleSaveCustomRate = async () => {
+        if (!transactionBill?._id) return;
+        const rateNum = Number(customRateInput);
+        if (isNaN(rateNum) || rateNum < 0) {
+            if (showToast) showToast('Please enter a valid rate', 'error');
+            return;
+        }
+
+        try {
+            setSavingRate(true);
+            const { data } = await billService.updateRate(transactionBill._id, rateNum);
+            setTransactionBill(data);
+            setIsEditingRate(false);
+            if (showToast) showToast(`Resource rate fixed at ₹${rateNum.toLocaleString()}`, 'success');
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to update rate';
+            if (showToast) showToast(msg, 'error');
+        } finally {
+            setSavingRate(false);
+        }
+    };
+
+    const handleCompleteBill = async () => {
+        if (!transactionBill?._id) return;
+        try {
+            const { data } = await billService.complete(transactionBill._id);
+            setTransactionBill(data);
+            if (showToast) showToast('Transaction Bill marked as Completed (Settled)!', 'success');
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to complete bill';
+            if (showToast) showToast(msg, 'error');
+        }
+    };
+
+    const handleTerminateBill = async () => {
+        if (!transactionBill?._id) return;
+        try {
+            const { data } = await billService.terminate(transactionBill._id);
+            setTransactionBill(data);
+            if (showToast) showToast('Transaction Bill terminated.', 'info');
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to terminate bill';
+            if (showToast) showToast(msg, 'error');
         }
     };
 
@@ -429,15 +539,148 @@ const MapPage = () => {
                             </div>
                         )}
 
+                        {/* Providing Hospital Delivery In-Progress Notice */}
+                        {isProvider && acceptedRequest.status === 'Pending' && (
+                            <div style={{ marginTop: '1.25rem', padding: '1rem', background: '#F0FDF4', borderRadius: '8px', border: '1px solid #BBF7D0' }}>
+                                <h3 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.35rem', color: '#166534' }}>Fulfilling Request (Active)</h3>
+                                <p style={{ fontSize: '0.8rem', color: '#15803D', marginBottom: '0.75rem' }}>
+                                    You accepted this request from {acceptedRequest.requestingHospital?.name}. Resources are in transit / prepared.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleSuccessRequest}
+                                    className="btn btn-primary"
+                                    style={{ width: '100%', background: '#059669', borderColor: '#059669', fontWeight: '600' }}
+                                >
+                                    Mark Delivered (Success)
+                                </button>
+                            </div>
+                        )}
+
                         {acceptedRequest.status === 'Completed' && (
-                            <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0', borderRadius: '6px', fontWeight: '600', textAlign: 'center' }}>
-                                ✓ Request Completed (Success)
+                            <div style={{ marginTop: '1rem', padding: '0.85rem', background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0', borderRadius: '8px', fontWeight: '600', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                Request Completed (Success)
                             </div>
                         )}
 
                         {acceptedRequest.status === 'Ended' && (
                             <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: '6px', fontWeight: '600', textAlign: 'center' }}>
                                 ✕ Request Ended
+                            </div>
+                        )}
+
+                        {/* Transaction Bill Card */}
+                        {transactionBill && (
+                            <div style={{ marginTop: '1.25rem', padding: '1rem', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                    <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#0F172A', margin: 0 }}>Transaction Bill</h3>
+                                    <span style={{
+                                        fontSize: '0.725rem',
+                                        fontWeight: '600',
+                                        padding: '0.2rem 0.5rem',
+                                        borderRadius: '999px',
+                                        background: transactionBill.status === 'Completed' ? '#ECFDF5' : transactionBill.status === 'Terminated' ? '#FEF2F2' : isRequestor ? '#FEF3C7' : '#EFF6FF',
+                                        color: transactionBill.status === 'Completed' ? '#047857' : transactionBill.status === 'Terminated' ? '#B91C1C' : isRequestor ? '#B45309' : '#1D4ED8',
+                                        border: '1px solid currentColor'
+                                    }}>
+                                        {transactionBill.status === 'Completed' ? 'Completed (Settled)' : transactionBill.status === 'Terminated' ? 'Terminated' : (isRequestor ? 'Pending Bill (Payable)' : 'Active Bill (Receivable)')}
+                                    </span>
+                                </div>
+
+                                <div style={{ fontSize: '0.825rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Bill No:</span>
+                                        <strong style={{ fontFamily: 'monospace' }}>{transactionBill.billNumber}</strong>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Unit Rate ({transactionBill.resourceType}{transactionBill.resourceGroup ? ` - ${transactionBill.resourceGroup}` : ''}):</span>
+                                        {isEditingRate ? (
+                                            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                                                <input
+                                                    type="number"
+                                                    value={customRateInput}
+                                                    onChange={(e) => setCustomRateInput(e.target.value)}
+                                                    style={{ width: '85px', padding: '0.2rem 0.4rem', fontSize: '0.8rem', border: '1px solid #CBD5E1', borderRadius: '4px' }}
+                                                />
+                                                <button type="button" className="btn btn-sm btn-primary" onClick={handleSaveCustomRate} disabled={savingRate} style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}>
+                                                    Save
+                                                </button>
+                                                <button type="button" className="btn btn-sm" onClick={() => setIsEditingRate(false)} style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}>
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                <strong>₹{transactionBill.unitRate?.toLocaleString()}</strong>
+                                                {isProvider && transactionBill.status === 'Active' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsEditingRate(true)}
+                                                        style={{ background: 'none', border: 'none', color: '#2563EB', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                                                        title="Providing hospital can fix the rate"
+                                                    >
+                                                        Fix Rate
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Resource Total ({transactionBill.quantity} unit{transactionBill.quantity > 1 ? 's' : ''}):</span>
+                                        <strong>₹{transactionBill.resourceTotal?.toLocaleString()}</strong>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Shortest Distance & Transport ({transactionBill.distanceKm} km):</span>
+                                        <strong>₹{transactionBill.transportTotal?.toLocaleString()}</strong>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                                        <span>DonorX Commission (5%):</span>
+                                        <strong>₹{transactionBill.commissionAmount?.toLocaleString()}</strong>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', paddingTop: '0.4rem', fontSize: '0.95rem', color: '#0F172A' }}>
+                                        <strong>Total Amount:</strong>
+                                        <strong style={{ color: '#0F172A', fontSize: '1rem' }}>₹{transactionBill.totalAmount?.toLocaleString()}</strong>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={() => navigate(`/billing?request=${acceptedRequest._id}`)}
+                                        style={{ width: '100%', fontSize: '0.85rem', padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                                    >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                        View Full Bill & Download PDF
+                                    </button>
+
+                                    {transactionBill.status === 'Active' && (
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleTerminateBill}
+                                                className="btn"
+                                                style={{ flex: 1, border: '1px solid #FCA5A5', color: '#DC2626', fontSize: '0.8rem', padding: '0.4rem' }}
+                                            >
+                                                Terminate Bill
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleCompleteBill}
+                                                className="btn"
+                                                style={{ flex: 1, background: '#059669', color: '#FFFFFF', border: 'none', fontSize: '0.8rem', padding: '0.4rem', fontWeight: '600' }}
+                                            >
+                                                Complete Bill
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

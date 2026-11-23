@@ -40,10 +40,14 @@ const Home = () => {
         const socket = getSocket();
         socket.on('new_request', fetchAll);
         socket.on('request_accepted', fetchAll);
+        socket.on('request_status_updated', fetchAll);
+        socket.on('request_completed', fetchAll);
         return () => {
             clearInterval(interval);
             socket.off('new_request', fetchAll);
             socket.off('request_accepted', fetchAll);
+            socket.off('request_status_updated', fetchAll);
+            socket.off('request_completed', fetchAll);
         };
     }, [fetchAll]);
 
