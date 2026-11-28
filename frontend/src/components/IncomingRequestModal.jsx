@@ -17,6 +17,7 @@ const IncomingRequestModal = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [inventoryMatch, setInventoryMatch] = useState(null);
     const [timeLeft, setTimeLeft] = useState(15);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const lastShownRequestIdRef = useRef(null);
     const dismissedRequestIdsRef = useRef(new Set());
     const isOpenRef = useRef(false);
@@ -138,7 +139,8 @@ const IncomingRequestModal = () => {
     };
 
     const handleRespond = async (status) => {
-        if (!request) return;
+        if (!request || isSubmitting) return;
+        setIsSubmitting(true);
         const requestId = request._id;
         dismissedRequestIdsRef.current.add(requestId);
         try {
@@ -149,7 +151,7 @@ const IncomingRequestModal = () => {
             );
             setIsOpen(false);
             setRequest(null);
-            setTimeLeft(180);
+            setTimeLeft(15);
             if (status === 'Accept') {
                 navigate(`/map?request=${requestId}`);
             }
@@ -158,6 +160,8 @@ const IncomingRequestModal = () => {
             showToast(`Failed to respond: ${errorMessage}`, 'error');
             setIsOpen(false);
             setRequest(null);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -211,11 +215,21 @@ const IncomingRequestModal = () => {
                 </p>
 
                 <div className="flex gap-4">
-                    <button onClick={() => handleRespond('Deny')} className="btn btn-secondary w-full" style={{ borderColor: '#D32F2F', color: '#D32F2F' }}>
+                    <button
+                        onClick={() => handleRespond('Deny')}
+                        disabled={isSubmitting}
+                        className="btn btn-secondary w-full"
+                        style={{ borderColor: '#D32F2F', color: '#D32F2F', opacity: isSubmitting ? 0.6 : 1 }}
+                    >
                         Deny
                     </button>
-                    <button onClick={() => handleRespond('Accept')} className="btn btn-primary w-full" style={{ background: '#059669', borderColor: '#059669' }}>
-                        ACCEPT REQUEST
+                    <button
+                        onClick={() => handleRespond('Accept')}
+                        disabled={isSubmitting}
+                        className="btn btn-primary w-full"
+                        style={{ background: '#059669', borderColor: '#059669', opacity: isSubmitting ? 0.6 : 1 }}
+                    >
+                        {isSubmitting ? 'PROCESSING...' : 'ACCEPT REQUEST'}
                     </button>
                 </div>
             </div>

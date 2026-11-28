@@ -81,51 +81,68 @@ exports.startTransport = async (requestId) => {
     const distanceKm = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
     const etaMinutes = Math.max(5, Math.round(distanceKm * 2));
 
-    let tracking = await TransportTracking.findOne({ requestId });
-    if (tracking) {
-        tracking.status = 'DISPATCHED';
-        tracking.origin = { ...origin, label: request.assignedHospital.name };
-        tracking.destination = { ...destination, label: 'Patient / Request Location' };
-        tracking.currentPosition = { ...origin };
-        tracking.progress = 0;
-        tracking.etaMinutes = etaMinutes;
-        tracking.distanceKm = Math.round(distanceKm * 100) / 100;
-        tracking.resourceLabel = formatResourceLabel(request.resourceNeeded);
-        tracking.updatedAt = new Date();
-    } else {
-        tracking = new TransportTracking({
-            requestId,
-            origin: { ...origin, label: request.assignedHospital.name },
-            destination: { ...destination, label: 'Patient / Request Location' },
-            currentPosition: { ...origin },
-            etaMinutes,
-            distanceKm: Math.round(distanceKm * 100) / 100,
-            resourceLabel: formatResourceLabel(request.resourceNeeded),
-        });
-    }
+    const trackingData = {
+        requestId,
+        origin: { ...origin, label: request.assignedHospital.name },
+        destination: { ...destination, label: 'Patient / Request Location' },
+        currentPosition: { ...origin },
+        progress: 0,
+        etaMinutes,
+        distanceKm: Math.round(distanceKm * 100) / 100,
+        resourceLabel: formatResourceLabel(request.resourceNeeded),
+        status: 'DISPATCHED',
+        updatedAt: new Date(),
+    };
 
-    await tracking.save();
+    const tracking = await TransportTracking.findOneAndUpdate(
+        { requestId },
+        { $set: trackingData },
+        { new: true, upsert: true }
+    );
+
     await emitTransportUpdate(requestId, tracking);
 
     let progress = 0;
+    let isUpdating = false;
     const interval = setInterval(async () => {
-        progress = Math.min(progress + 4, 100);
-        const fraction = progress / 100;
+        if (isUpdating) return;
+        isUpdating = true;
+        try {
+            progress = Math.min(progress + 4, 100);
+            const fraction = progress / 100;
 
-        tracking.currentPosition = {
-            lat: interpolate(origin.lat, destination.lat, fraction),
-            lng: interpolate(origin.lng, destination.lng, fraction),
-        };
-        tracking.progress = progress;
-        tracking.etaMinutes = Math.max(0, Math.round(etaMinutes * (1 - fraction)));
-        tracking.status = progress >= 100 ? 'ARRIVED' : 'IN_TRANSIT';
-        tracking.updatedAt = new Date();
+            const currentPosition = {
+                lat: interpolate(origin.lat, destination.lat, fraction),
+                lng: interpolate(origin.lng, destination.lng, fraction),
+            };
+            const currentEta = Math.max(0, Math.round(etaMinutes * (1 - fraction)));
+            const currentStatus = progress >= 100 ? 'ARRIVED' : 'IN_TRANSIT';
 
-        await tracking.save();
-        await emitTransportUpdate(requestId, tracking);
+            const updatedTracking = await TransportTracking.findOneAndUpdate(
+                { requestId },
+                {
+                    $set: {
+                        currentPosition,
+                        progress,
+                        etaMinutes: currentEta,
+                        status: currentStatus,
+                        updatedAt: new Date(),
+                    },
+                },
+                { new: true }
+            );
 
-        if (progress >= 100) {
-            stopSimulation(requestId);
+            if (updatedTracking) {
+                await emitTransportUpdate(requestId, updatedTracking);
+            }
+
+            if (progress >= 100) {
+                stopSimulation(requestId);
+            }
+        } catch (simErr) {
+            console.error('Transport simulation step error:', simErr.message);
+        } finally {
+            isUpdating = false;
         }
     }, 4000);
 
@@ -139,15 +156,19 @@ exports.getTransportByRequest = async (requestId) => {
 
 exports.completeTransport = async (requestId) => {
     stopSimulation(requestId);
-    const tracking = await TransportTracking.findOne({ requestId });
+    const tracking = await TransportTracking.findOneAndUpdate(
+        { requestId },
+        {
+            $set: {
+                status: 'DELIVERED',
+                progress: 100,
+                etaMinutes: 0,
+                updatedAt: new Date(),
+            },
+        },
+        { new: true }
+    );
     if (!tracking) return null;
-
-    tracking.status = 'DELIVERED';
-    tracking.progress = 100;
-    tracking.etaMinutes = 0;
-    tracking.currentPosition = { ...tracking.destination };
-    tracking.updatedAt = new Date();
-    await tracking.save();
     await emitTransportUpdate(requestId, tracking);
     return tracking;
 };

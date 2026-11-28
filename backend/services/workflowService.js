@@ -136,11 +136,17 @@ exports.handleAcceptance = async (requestId, hospitalId) => {
         throw new Error('Request not found');
     }
 
+    const hospitalIdStr = hospitalId.toString();
+
+    // Idempotent acceptance: if already claimed by this exact hospital, return gracefully
+    if (request.status === 'Pending' && request.assignedHospital?.toString() === hospitalIdStr) {
+        return;
+    }
+
     if (request.status !== 'Generated') {
         throw new Error(`Request not available for acceptance. Current status: ${request.status}`);
     }
 
-    const hospitalIdStr = hospitalId.toString();
     const matchesStr = (request.potentialMatches || []).map((m) => m.toString());
 
     if (!matchesStr.includes(hospitalIdStr)) {
