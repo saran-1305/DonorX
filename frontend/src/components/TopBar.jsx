@@ -1,79 +1,118 @@
 import React from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import NotificationBell from './NotificationBell';
 import { useDonor } from '../context/DonorContext';
-
-const INVENTORY_TABS = [
-    { label: 'Dashboard', to: '/home' },
-    { label: 'Blood Bank', to: '/inventory?tab=blood' },
-    { label: 'Organ Bank', to: '/inventory?tab=organ' },
-    { label: 'Resource Hub', to: '/inventory?tab=resource' },
-];
+import { Menu, ChevronDown } from 'lucide-react';
 
 const getPageMeta = (pathname, search) => {
-    if (pathname === '/home') {
-        return { title: 'Command Dashboard', subtitle: 'Real-time network intelligence and analytics' };
+    if (pathname === '/home' || pathname === '/') {
+        return {
+            title: 'Healthcare Command Center',
+            subtitle: 'Real-time network intelligence and emergency coordination.',
+        };
     }
     if (pathname === '/request') {
-        return { title: 'Emergency Request', subtitle: 'Create and dispatch critical resource requests' };
+        const isAI = new URLSearchParams(search).get('mode') === 'ai';
+        return {
+            title: isAI ? 'Clinical AI Workspace' : 'Emergency Coordination',
+            subtitle: isAI
+                ? 'Automated medical report parsing & triage intelligence'
+                : 'Rapid emergency resource requisition & dispatch',
+        };
     }
     if (pathname === '/inventory') {
         const tab = new URLSearchParams(search).get('tab') || 'blood';
         const titles = {
-            blood: { title: 'Blood Bank', subtitle: 'Manage blood type inventory and stock levels' },
-            organ: { title: 'Organ Bank', subtitle: 'Track organ availability across your facility' },
-            resource: { title: 'Resource Hub', subtitle: 'Monitor ICU beds, ventilators, oxygen, and ambulances' },
+            blood: { title: 'Blood Bank Intelligence', subtitle: 'Real-time blood component levels, reservation & shortage forecasting' },
+            organ: { title: 'Organ Bank Registry', subtitle: 'Track viability, ischemia time windows and donor organ availability' },
+            resource: { title: 'Resource Hub', subtitle: 'ICU beds, ventilators, oxygen cylinders & mobile assets' },
         };
         return titles[tab] || titles.blood;
     }
     if (pathname === '/social') {
-        return { title: 'Hospital Network', subtitle: 'Connect and collaborate with registered hospitals' };
+        return { title: 'Hospital Intelligence Network', subtitle: 'Verified partner healthcare institutions across the region' };
     }
     if (pathname === '/messages') {
-        return { title: 'Messages', subtitle: 'Real-time chat with hospitals on the network' };
+        return { title: 'Secure Clinical Communications', subtitle: 'Direct hospital-to-hospital emergency coordination channel' };
     }
     if (pathname === '/map') {
-        return { title: 'Map', subtitle: 'View all network hospitals and plan routes' };
+        return { title: 'Live Network & Ambulance Fleet', subtitle: 'Real-time GPS tracking and transit route monitoring' };
     }
-    return { title: 'DonorX', subtitle: '' };
+    if (pathname === '/billing') {
+        return { title: 'Healthcare Audit & Billing', subtitle: 'Digital dispatch invoices and operational expenditure records' };
+    }
+    return { title: 'Healthcare Command Center', subtitle: 'Real-time network intelligence and emergency coordination.' };
 };
 
-const TopBar = () => {
+const TopBar = ({ onToggleSidebar }) => {
     const { pathname, search } = useLocation();
+    const navigate = useNavigate();
     const { user } = useDonor();
     const meta = getPageMeta(pathname, search);
-    const isInventory = pathname === '/inventory';
-    const tab = new URLSearchParams(search).get('tab') || 'blood';
+    const isHome = pathname === '/home' || pathname === '/';
 
     return (
         <header className="topbar">
-            <div className="topbar-left">
-                <h1 className="topbar-title">{meta.title}</h1>
-                <p className="topbar-subtitle">{meta.subtitle}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                {onToggleSidebar && (
+                    <button
+                        onClick={onToggleSidebar}
+                        style={{
+                            background: 'white',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            width: '40px',
+                            height: '40px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <Menu size={20} color="var(--text-primary)" />
+                    </button>
+                )}
+                <div className="topbar-left">
+                    <h1 className="topbar-title">{meta.title}</h1>
+                    <p className="topbar-subtitle">{meta.subtitle}</p>
+                </div>
             </div>
 
-            {(isInventory || pathname === '/home') && (
-                <div className="topbar-tabs">
-                    {INVENTORY_TABS.map((t) => {
-                        const isActive = t.to === '/home'
-                            ? pathname === '/home'
-                            : t.to.includes('tab=organ')
-                                ? isInventory && tab === 'organ'
-                                : t.to.includes('tab=resource')
-                                    ? isInventory && tab === 'resource'
-                                    : isInventory && tab === 'blood';
-                        return (
-                            <Link key={t.to} to={t.to} className={`topbar-tab ${isActive ? 'topbar-tab-active' : ''}`}>
-                                {t.label}
-                            </Link>
-                        );
-                    })}
-                </div>
-            )}
+            {/* View Pill Tabs from Reference Image */}
+            <div className="topbar-view-tabs">
+                <button
+                    type="button"
+                    onClick={() => navigate('/home')}
+                    className={`topbar-view-tab ${isHome ? 'topbar-view-tab-active' : ''}`}
+                >
+                    Overview
+                </button>
+                <button
+                    type="button"
+                    onClick={() => navigate('/map')}
+                    className={`topbar-view-tab ${pathname === '/map' ? 'topbar-view-tab-active' : ''}`}
+                >
+                    Live Map
+                </button>
+                <button
+                    type="button"
+                    onClick={() => navigate('/billing')}
+                    className={`topbar-view-tab ${pathname === '/billing' ? 'topbar-view-tab-active' : ''}`}
+                >
+                    Analytics
+                </button>
+            </div>
 
+            {/* Right Controls: Notification Bell + Avatar */}
             <div className="topbar-right">
                 <NotificationBell />
-                <div className="topbar-avatar">{user?.name?.charAt(0)?.toUpperCase()}</div>
+
+                <div className="topbar-avatar-container" onClick={() => navigate('/social')}>
+                    <div className="topbar-avatar-img">
+                        {user?.name ? user.name.charAt(0).toUpperCase() : 'H'}
+                    </div>
+                    <ChevronDown size={14} color="var(--text-secondary)" style={{ marginRight: '4px' }} />
+                </div>
             </div>
         </header>
     );
